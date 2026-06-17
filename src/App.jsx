@@ -2,69 +2,67 @@ import { useState, useRef, useCallback, useEffect } from "react";
 
 const RETAILERS = {
   "BJ's Wholesale Club": { nsCustomer: "BJs Wholesale Corporate : BJs Wholesale", shipMethod: "Route", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No" },
+  "Global New Beginnings": { nsCustomer: "Global New Beginnings", shipMethod: "Freight", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No" },
   "Hy-Vee": { nsCustomer: "Hy-Vee", shipMethod: "Freight", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No" },
   "TJ Maxx Canada": { nsCustomer: "TJ Maxx Canada", shipMethod: "Freight", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No" },
-  "Global New Beginnings": { nsCustomer: "Global New Beginnings", shipMethod: "Freight", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No" },
 };
 const SHIP_METHODS = ["Route","Freight","UPS Ground","UPS 2nd Day Air","FedEx Ground","FedEx Express","Will Call","Other"];
 const STATUSES = ["Pending Fulfillment","Pending Approval","Pending Billing","Billed","Closed"];
-const CSV_HEADERS = ["Order #","SKU","NS SKU","Date","Quantity","Rate","Amount","Is EDI Sent","PO Number","NS CUSTOMER","Is Sample","Price Level","Status","Ship Date","Cancel Date","Must Arrive By Date","Name","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
+const CSV_HEADERS = ["Order #","NS SKU","Date","Quantity","Rate","Amount","Is EDI Sent","PO Number","NS CUSTOMER","Price Level","Status","Ship Date","Cancel Date","Must Arrive By Date","Name","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
 const IM_KEY = "item-master-data";
 const IM_SHARED = true;
 const TABS_PREVIEW = [
   { label: "Order", cols: ["Order #","Date","PO Number","Status","Price Level","Is EDI Sent"] },
-  { label: "Items", cols: ["SKU","NS SKU","Quantity","Rate","Amount"] },
+  { label: "Items", cols: ["NS SKU","Quantity","Rate","Amount"] },
   { label: "Dates", cols: ["Ship Date","Cancel Date","Must Arrive By Date"] },
   { label: "Ship to", cols: ["Name","Address 1","Address 2","City","State","Zip","Country"] },
   { label: "Settings", cols: ["NS CUSTOMER","Ship Method","Memo"] },
 ];
 
+function parseCsvRow(line){const vals=[];let cur="",inQ=false;for(let i=0;i<line.length;i++){const ch=line[i];if(inQ){if(ch==='"'&&line[i+1]==='"'){cur+='"';i++;}else if(ch==='"'){inQ=false;}else{cur+=ch;}}else{if(ch==='"'){inQ=true;}else if(ch===','){vals.push(cur);cur="";}else{cur+=ch;}}}vals.push(cur);return vals;}
+function parseImCsv(text){const lines=text.replace(/\r/g,"").trim().split("\n");if(!lines.length)return[];const hdrs=parseCsvRow(lines[0]).map(h=>h.trim());return lines.slice(1).filter(l=>l.trim()).map(line=>{const vals=parseCsvRow(line);const obj={};hdrs.forEach((h,i)=>{obj[h]=(vals[i]||"").trim();});return obj;});}
 function esc(v){if(v===null||v===undefined)return "";const s=String(v);return(s.includes(",")||s.includes('"')||s.includes("\n"))?'"'+s.replace(/"/g,'""')+'"':s;}
 function buildCSV(rows){return[CSV_HEADERS.join(","),...rows.map(r=>CSV_HEADERS.map(h=>esc(r[h])).join(","))].join("\n");}
 function dlCSV(content,name){const b=new Blob([content],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
 function addDays(ds,n){if(!ds)return "";const[m,d,y]=ds.split("/").map(Number);const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+n);return `${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}/${dt.getFullYear()}`;}
 
-const PROMPT=`Extract data from this purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","deliveryDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY or empty","cancelDate":"MM/DD/YYYY or empty","mustArriveByDate":"MM/DD/YYYY or empty","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":"","lineItems":[{"upc":"","vendorItemNum":"","quantity":0,"unitPrice":0,"description":""}]}\n\nRules: mustArriveByDate=deliveryDate if only one date. shipDate/cancelDate=empty if not stated. Extract ALL lines. ONLY JSON.`;
+const PROMPT=`Extract data from this purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","deliveryDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY or empty","cancelDate":"MM/DD/YYYY or empty","mustArriveByDate":"MM/DD/YYYY or empty","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":"","lineItems":[{"upc":"","vendorItemNum":"","quantity":0,"unitPrice":0,"description":""}]}\n\nRules: mustArriveByDate=deliveryDate if only one date. shipDate/cancelDate=empty if not stated. memo=any delivery appointment or scheduling note on the PO (e.g. "Vendor to call Shipping Location for appointment"); leave empty if none. Extract ALL lines. ONLY JSON.`;
 
 const S = {
-  card:{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:12,padding:"1.1rem 1.25rem",marginBottom:"0.9rem"},
-  sectionLabel:{fontSize:11,fontWeight:500,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--color-text-tertiary)",display:"block",marginBottom:10},
-  fieldLabel:{fontSize:13,fontWeight:500,color:"var(--color-text-secondary)",display:"block",marginBottom:5},
-  select:{width:"100%",boxSizing:"border-box",padding:"8px 10px",fontSize:14,fontFamily:"var(--font-sans)",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",cursor:"pointer"},
-  input:{width:"100%",boxSizing:"border-box",padding:"8px 10px",fontSize:14,fontFamily:"var(--font-sans)",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)"},
-  dzBase:{border:"1.5px dashed var(--color-border-secondary)",borderRadius:8,padding:"1.75rem 1rem",textAlign:"center",cursor:"pointer"},
-  dzHover:{border:"1.5px dashed var(--color-border-info)",background:"var(--color-background-info)"},
-  fileRow:{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"var(--color-background-secondary)",borderRadius:8,border:"0.5px solid var(--color-border-tertiary)"},
-  imStored:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--color-background-success)",border:"0.5px solid var(--color-border-success)",borderRadius:8,padding:"10px 14px"},
-  btnPrimary:{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"11px 20px",fontSize:14,fontWeight:500,fontFamily:"var(--font-sans)",border:"none",borderRadius:8,background:"var(--color-text-primary)",color:"var(--color-background-primary)",cursor:"pointer"},
-  btnPrimaryDis:{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"11px 20px",fontSize:14,fontWeight:500,fontFamily:"var(--font-sans)",border:"none",borderRadius:8,background:"var(--color-text-primary)",color:"var(--color-background-primary)",cursor:"not-allowed",opacity:0.4},
-  btnOutline:{display:"flex",alignItems:"center",gap:6,padding:"9px 16px",fontSize:13,fontWeight:500,fontFamily:"var(--font-sans)",border:"0.5px solid var(--color-border-secondary)",borderRadius:8,background:"var(--color-background-primary)",color:"var(--color-text-primary)",cursor:"pointer"},
-  btnSuccess:{display:"flex",alignItems:"center",gap:6,padding:"9px 20px",fontSize:13,fontWeight:500,fontFamily:"var(--font-sans)",border:"none",borderRadius:8,background:"#166534",color:"#fff",cursor:"pointer"},
-  btnReplace:{fontSize:12,color:"var(--color-text-secondary)",background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-secondary)",borderRadius:8,padding:"5px 12px",cursor:"pointer",fontFamily:"var(--font-sans)"},
-  mainTabBtn:(active)=>({padding:"8px 16px",fontSize:13,fontWeight:500,fontFamily:"var(--font-sans)",border:"none",borderBottom:active?"2px solid var(--color-text-primary)":"2px solid transparent",background:"transparent",color:active?"var(--color-text-primary)":"var(--color-text-secondary)",cursor:"pointer"}),
-  previewTabBtn:(active)=>({padding:"5px 13px",fontSize:12,fontFamily:"var(--font-sans)",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:active?"var(--color-text-primary)":"var(--color-background-secondary)",color:active?"var(--color-background-primary)":"var(--color-text-secondary)",cursor:"pointer"}),
-  stat:{background:"var(--color-background-secondary)",borderRadius:8,padding:"0.75rem 1rem"},
-  statLabel:{fontSize:11,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.05em",color:"var(--color-text-tertiary)",marginBottom:3},
-  statVal:{fontSize:18,fontWeight:500,color:"var(--color-text-primary)"},
-  msgErr:{fontSize:13,color:"var(--color-text-danger)",background:"var(--color-background-danger)",borderRadius:8,padding:"9px 13px",marginBottom:10,display:"flex",alignItems:"center",gap:8},
-  msgWarn:{fontSize:13,color:"var(--color-text-warning)",background:"var(--color-background-warning)",borderRadius:8,padding:"9px 13px",marginBottom:8,display:"flex",alignItems:"center",gap:8},
-  msgOk:{fontSize:13,color:"var(--color-text-success)",background:"var(--color-background-success)",borderRadius:8,padding:"9px 13px",marginBottom:8,display:"flex",alignItems:"center",gap:8},
-  th:{textAlign:"left",padding:"7px 10px",borderBottom:"0.5px solid var(--color-border-tertiary)",fontWeight:500,fontSize:12,color:"var(--color-text-secondary)",whiteSpace:"nowrap"},
-  td:{padding:"7px 10px",fontSize:12,color:"var(--color-text-primary)",whiteSpace:"nowrap"},
-  removeLink:{fontSize:12,color:"var(--color-text-tertiary)",textDecoration:"underline",cursor:"pointer",marginTop:4,display:"inline-block"},
+  card:{background:"var(--color-background-primary)",border:"1px solid var(--color-border-secondary)",borderRadius:12,padding:"1.4rem 1.5rem",marginBottom:"1.1rem"},
+  sectionLabel:{fontSize:12,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",color:"var(--color-text-secondary)",display:"block",marginBottom:12},
+  fieldLabel:{fontSize:14,fontWeight:500,color:"var(--color-text-primary)",display:"block",marginBottom:6},
+  select:{width:"100%",boxSizing:"border-box",padding:"10px 12px",fontSize:14,fontFamily:"var(--font-sans)",borderRadius:8,border:"1px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",cursor:"pointer"},
+  input:{width:"100%",boxSizing:"border-box",padding:"10px 12px",fontSize:14,fontFamily:"var(--font-sans)",borderRadius:8,border:"1px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)"},
+  dzBase:{border:"2px dashed var(--color-border-secondary)",borderRadius:10,padding:"2.5rem 1.5rem",textAlign:"center",cursor:"pointer",background:"var(--color-background-secondary)",transition:"border-color 0.15s,background 0.15s"},
+  dzHover:{border:"2px dashed var(--color-border-info)",background:"var(--color-background-info)"},
+  fileRow:{display:"flex",alignItems:"center",gap:14,padding:"12px 16px",background:"var(--color-background-secondary)",borderRadius:8,border:"1px solid var(--color-border-secondary)"},
+  imStored:{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--color-background-success)",border:"1px solid var(--color-border-success)",borderRadius:8,padding:"12px 16px"},
+  btnPrimary:{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"13px 20px",fontSize:15,fontWeight:500,fontFamily:"var(--font-sans)",border:"none",borderRadius:8,background:"var(--color-text-primary)",color:"var(--color-background-primary)",cursor:"pointer"},
+  btnPrimaryDis:{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"13px 20px",fontSize:15,fontWeight:500,fontFamily:"var(--font-sans)",border:"none",borderRadius:8,background:"var(--color-text-primary)",color:"var(--color-background-primary)",cursor:"not-allowed",opacity:0.4},
+  btnOutline:{display:"flex",alignItems:"center",gap:6,padding:"10px 18px",fontSize:14,fontWeight:500,fontFamily:"var(--font-sans)",border:"1px solid var(--color-border-secondary)",borderRadius:8,background:"var(--color-background-primary)",color:"var(--color-text-primary)",cursor:"pointer"},
+  btnSuccess:{display:"flex",alignItems:"center",gap:6,padding:"10px 22px",fontSize:14,fontWeight:500,fontFamily:"var(--font-sans)",border:"none",borderRadius:8,background:"#166534",color:"#fff",cursor:"pointer"},
+  btnReplace:{fontSize:13,color:"var(--color-text-secondary)",background:"var(--color-background-primary)",border:"1px solid var(--color-border-secondary)",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontFamily:"var(--font-sans)"},
+  mainTabBtn:(active)=>({padding:"10px 18px",fontSize:14,fontWeight:500,fontFamily:"var(--font-sans)",border:"none",borderBottom:active?"2px solid var(--color-text-primary)":"2px solid transparent",background:"transparent",color:active?"var(--color-text-primary)":"var(--color-text-secondary)",cursor:"pointer"}),
+  previewTabBtn:(active)=>({padding:"6px 14px",fontSize:13,fontFamily:"var(--font-sans)",borderRadius:8,border:"1px solid var(--color-border-secondary)",background:active?"var(--color-text-primary)":"var(--color-background-secondary)",color:active?"var(--color-background-primary)":"var(--color-text-secondary)",cursor:"pointer"}),
+  stat:{background:"var(--color-background-secondary)",borderRadius:8,padding:"1rem 1.1rem",border:"1px solid var(--color-border-tertiary)"},
+  statLabel:{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--color-text-tertiary)",marginBottom:4},
+  statVal:{fontSize:19,fontWeight:600,color:"var(--color-text-primary)"},
+  msgErr:{fontSize:14,color:"var(--color-text-danger)",background:"var(--color-background-danger)",borderRadius:8,padding:"11px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:9},
+  msgWarn:{fontSize:14,color:"var(--color-text-warning)",background:"var(--color-background-warning)",borderRadius:8,padding:"11px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:9},
+  msgOk:{fontSize:14,color:"var(--color-text-success)",background:"var(--color-background-success)",borderRadius:8,padding:"11px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:9},
+  th:{textAlign:"left",padding:"9px 12px",borderBottom:"1px solid var(--color-border-tertiary)",fontWeight:600,fontSize:13,color:"var(--color-text-secondary)",whiteSpace:"nowrap"},
+  td:{padding:"9px 12px",fontSize:13,color:"var(--color-text-primary)",whiteSpace:"nowrap"},
+  removeLink:{fontSize:13,color:"var(--color-text-tertiary)",textDecoration:"underline",cursor:"pointer",marginTop:5,display:"inline-block"},
 };
 
 export default function App() {
-  const [mainTab, setMainTab] = useState("convert");
   const [retailer, setRetailer] = useState("BJ's Wholesale Club");
   const [shipMethod, setShipMethod] = useState("Route");
   const [orderStatus, setOrderStatus] = useState("Pending Fulfillment");
   const [memo, setMemo] = useState("");
   const [im, setIm] = useState(null);
-  const [imMeta, setImMeta] = useState(null);
-  const [imLoading, setImLoading] = useState(true);
-  const [imDrag, setImDrag] = useState(false);
-  const [imDebug, setImDebug] = useState(null);
+  const [imSource, setImSource] = useState(null);
   const [pdf, setPdf] = useState(null);
   const [pdfName, setPdfName] = useState("");
   const [pdfDrag, setPdfDrag] = useState(false);
@@ -74,73 +72,53 @@ export default function App() {
   const [rows, setRows] = useState([]);
   const [previewTab, setPreviewTab] = useState("Order");
   const [err, setErr] = useState("");
-  const imRef = useRef(); const pdfRef = useRef();
+  const pdfRef = useRef();
+  const imRef = useRef();
 
   useEffect(()=>{
     (async()=>{
-      try{const s=await window.storage.get(IM_KEY,IM_SHARED);if(s?.value){const p=JSON.parse(s.value);setIm(p.items);setImMeta({name:p.name,count:p.items.length,savedAt:p.savedAt,updatedBy:p.updatedBy||""});}}catch(_){}
-      setImLoading(false);
+      try{
+        const nsRes=await fetch('/api/netsuite/itemmaster');
+        if(nsRes.ok){
+          const data=await nsRes.json();
+          if(!data.error&&data.items?.length){
+            setIm(data.items);
+            setImSource(`NetSuite (${data.items.length} items)`);
+            localStorage.setItem(IM_KEY,JSON.stringify({items:data.items,savedAt:new Date().toLocaleDateString()}));
+            return;
+          }
+        }
+      }catch(_){}
+      try{
+        const s=localStorage.getItem(IM_KEY);
+        if(s){const p=JSON.parse(s);if(p.items?.length){setIm(p.items);setImSource(`Cached (${p.items.length} items, ${p.savedAt||""})`);}}
+      }catch(_){}
     })();
   },[]);
 
-  const parseIM = useCallback((text)=>{
-    const firstLine = text.split("\n")[0];
-    const delim = firstLine.includes("\t") ? "\t" : ",";
-    const lines = text.split("\n").filter(l=>l.trim());
-    if(lines.length<2) return {items:[],headers:[]};
-    const rawHeaders = lines[0].replace(/^﻿/,"");
-    const headers = rawHeaders.split(delim).map(h=>h.trim().replace(/^["']|["']$/g,""));
-    const items = lines.slice(1).map(line=>{
-      const cols = line.split(delim);
-      const obj={};
-      headers.forEach((h,i)=>{obj[h]=(cols[i]||"").trim().replace(/^["']|["']$/g,"");});
-      return obj;
-    }).filter(o=>Object.values(o).some(v=>v));
-    return {items, headers};
-  },[]);
-
-  const loadIM = (file)=>{
-    if(!file) return;
-    const r=new FileReader();
-    r.onload=async(ev)=>{
-      const {items, headers}=parseIM(ev.target.result);
-      const firstItem = items[0]||{};
-      setImDebug({
-        headers: headers.slice(0,10),
-        firstSKU: firstItem["SKU"]||"(not found)",
-        firstParent: firstItem["Parent SKU"]||"(not found)",
-        firstUPC: firstItem["UPC Code"]||"(not found)",
-        allKeys: Object.keys(firstItem).slice(0,15),
-      });
+  const loadIMCSV=useCallback((file)=>{
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const rows=parseImCsv(e.target.result);
+      const items=rows.map(r=>({'Name':r['Name']||'','External ID':r['External ID']||'','UPC Code':r['UPC Code']||''})).filter(r=>r['Name']);
       setIm(items);
-      const savedAt=new Date().toLocaleDateString();
-      const meta={name:file.name,count:items.length,savedAt,updatedBy:"you"};
-      setImMeta(meta);
-      try{await window.storage.set(IM_KEY,JSON.stringify({items,name:file.name,savedAt,updatedBy:"you"}),IM_SHARED);}catch(_){}
+      setImSource(`CSV (${items.length} items)`);
+      localStorage.setItem(IM_KEY,JSON.stringify({items,savedAt:new Date().toLocaleDateString()}));
     };
-    r.readAsText(file);
-  };
-
-  const clearIM = async()=>{setIm(null);setImMeta(null);setImDebug(null);try{await window.storage.delete(IM_KEY,IM_SHARED);}catch(_){} if(imRef.current)imRef.current.value="";};
+    reader.readAsText(file);
+  },[]);
 
   const lookup = useCallback((items,upc,vin)=>{
     if(!items?.length) return null;
-    const normUPC = String(upc||"").replace(/\D/g,"");
     const normVIN = String(vin||"").trim().toUpperCase();
+    const normUPC = String(upc||"").replace(/\D/g,"");
+    if(normVIN){
+      const m=items.find(it=>String(it["External ID"]||"").trim().toUpperCase()===normVIN);
+      if(m) return m;
+    }
     if(normUPC){
       const m=items.find(it=>String(it["UPC Code"]||"").replace(/\D/g,"")===normUPC);
-      if(m) return m;
-    }
-    if(normVIN){
-      const m=items.find(it=>String(it["SKU"]||"").trim().toUpperCase()===normVIN);
-      if(m) return m;
-    }
-    if(normVIN){
-      const m=items.find(it=>{const s=String(it["SKU"]||"").trim().toUpperCase();return s&&normVIN.includes(s);});
-      if(m) return m;
-    }
-    if(normVIN){
-      const m=items.find(it=>{const s=String(it["SKU"]||"").trim().toUpperCase();return s&&s.includes(normVIN);});
       if(m) return m;
     }
     return null;
@@ -162,10 +140,13 @@ export default function App() {
     if(!pdf){setErr("Please upload a PO PDF first.");return;}
     setErr("");setResult(null);setRows([]);setBusy(true);setBusyMsg("Reading PO...");
     try{
-      const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,system:PROMPT,messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:pdf}},{type:"text",text:"Extract the purchase order data."}]}]})});
+      const resp=await fetch("/api/anthropic/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:4096,system:PROMPT,messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:pdf}},{type:"text",text:"Extract the purchase order data."}]}]})});
       const data=await resp.json();
+      if(!resp.ok||data.error){throw new Error(data.error?.message||`API error ${resp.status}`);}
       const raw=data.content?.find(b=>b.type==="text")?.text||"";
+      if(!raw) throw new Error("No text in API response. Check your API key.");
       const po=JSON.parse(raw.replace(/```json|```/g,"").trim());
+      if(po.memo&&!memo) setMemo(po.memo);
       setBusyMsg("Matching items...");
       const rc=RETAILERS[retailer];
       const mabd=po.mustArriveByDate||po.deliveryDate||"";
@@ -177,9 +158,8 @@ export default function App() {
         if(im?.length){
           const m=lookup(im,line.upc,line.vendorItemNum);
           if(m){
-            sku=String(m["SKU"]||"").trim();
-            const parent=String(m["Parent SKU"]||"").trim();
-            nsSku=parent&&parent!==sku?`${parent} : ${sku}`:sku;
+            nsSku=String(m["Name"]||"").trim();
+            sku=line.vendorItemNum||"";
           }else{
             unmatched.push(line.vendorItemNum||line.upc||line.description);
             sku=line.vendorItemNum||"";nsSku=sku;
@@ -196,81 +176,84 @@ export default function App() {
   const firstRow=rows[0]||{};
 
   return (
-    <div style={{fontFamily:"var(--font-sans)",padding:"1.5rem 0",maxWidth:660}}>
+    <div style={{fontFamily:"var(--font-sans)",padding:"1.75rem 0",maxWidth:680}}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
-      <div style={{marginBottom:"1.25rem"}}>
-        <h2 style={{fontSize:22,fontWeight:500,margin:"0 0 4px",color:"var(--color-text-primary)"}}>NetSuite PO Converter</h2>
-        <p style={{fontSize:14,color:"var(--color-text-secondary)",margin:0}}>Upload a retailer purchase order and download a NetSuite-ready CSV</p>
+      <div style={{marginBottom:"1.5rem"}}>
+        <h2 style={{fontSize:24,fontWeight:600,margin:"0 0 6px",color:"var(--color-text-primary)"}}>NetSuite PO Converter</h2>
+        <p style={{fontSize:15,color:"var(--color-text-secondary)",margin:0}}>Upload a retailer purchase order and download a NetSuite-ready CSV</p>
       </div>
 
-      {/* Main tabs */}
-      <div style={{display:"flex",borderBottom:"0.5px solid var(--color-border-tertiary)",marginBottom:"1.25rem",gap:0}}>
-        {[{id:"convert",label:"Convert PO",icon:"ti-wand"},{id:"itemmaster",label:"Item master",icon:"ti-table"}].map(t=>(
-          <button key={t.id} style={S.mainTabBtn(mainTab===t.id)} onClick={()=>setMainTab(t.id)}>
-            <i className={`ti ${t.icon}`} aria-hidden="true" style={{fontSize:14,marginRight:6,verticalAlign:"-1px"}}/>{t.label}
-            {t.id==="itemmaster"&&imMeta&&<span style={{marginLeft:6,fontSize:11,padding:"2px 7px",borderRadius:10,background:"var(--color-background-success)",color:"var(--color-text-success)",fontWeight:500}}>{imMeta.count.toLocaleString()}</span>}
-          </button>
-        ))}
-      </div>
 
-      {/* CONVERT TAB */}
-      {mainTab==="convert"&&(<>
-        {!imMeta&&!imLoading&&(
-          <div style={{...S.msgWarn,marginBottom:"0.9rem"}}>
-            <i className="ti ti-alert-triangle" aria-hidden="true" style={{fontSize:15,flexShrink:0}}/>
-            <span>No item master loaded. <button onClick={()=>setMainTab("itemmaster")} style={{background:"none",border:"none",color:"var(--color-text-warning)",textDecoration:"underline",cursor:"pointer",fontFamily:"var(--font-sans)",fontSize:13,padding:0,fontWeight:500}}>Upload one</button> for SKU matching.</span>
-          </div>
-        )}
-
-        <div style={S.card}>
-          <span style={S.sectionLabel}><i className="ti ti-settings" aria-hidden="true" style={{marginRight:6,fontSize:12,verticalAlign:"-1px"}}/>Order settings</span>
-          <div style={{marginBottom:10}}>
-            <label style={S.fieldLabel}>Retailer</label>
-            <select style={S.select} value={retailer} onChange={e=>handleRetailer(e.target.value)} disabled={busy}>
-              {Object.keys(RETAILERS).map(r=><option key={r}>{r}</option>)}
-            </select>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-            <div><label style={S.fieldLabel}>Ship method</label>
-              <select style={S.select} value={shipMethod} onChange={e=>setShipMethod(e.target.value)} disabled={busy}>
+        <div style={{...S.card,padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:8,marginBottom:8}}>
+            <div>
+              <label style={{...S.fieldLabel,fontSize:11,marginBottom:4}}>Retailer</label>
+              <select style={{...S.select,padding:"7px 10px",fontSize:13}} value={retailer} onChange={e=>handleRetailer(e.target.value)} disabled={busy}>
+                {Object.keys(RETAILERS).map(r=><option key={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{...S.fieldLabel,fontSize:11,marginBottom:4}}>Ship method</label>
+              <select style={{...S.select,padding:"7px 10px",fontSize:13}} value={shipMethod} onChange={e=>setShipMethod(e.target.value)} disabled={busy}>
                 {SHIP_METHODS.map(m=><option key={m}>{m}</option>)}
               </select>
             </div>
-            <div><label style={S.fieldLabel}>Status</label>
-              <select style={S.select} value={orderStatus} onChange={e=>setOrderStatus(e.target.value)} disabled={busy}>
+            <div>
+              <label style={{...S.fieldLabel,fontSize:11,marginBottom:4}}>Status</label>
+              <select style={{...S.select,padding:"7px 10px",fontSize:13}} value={orderStatus} onChange={e=>setOrderStatus(e.target.value)} disabled={busy}>
                 {STATUSES.map(s=><option key={s}>{s}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label style={S.fieldLabel}>Memo <span style={{fontWeight:400,color:"var(--color-text-tertiary)"}}>— optional</span></label>
-            <input style={S.input} type="text" placeholder="e.g. Spring 2026 Drop" value={memo} onChange={e=>setMemo(e.target.value)} disabled={busy}/>
+            <label style={{...S.fieldLabel,fontSize:11,marginBottom:4}}>Memo <span style={{fontWeight:400,color:"var(--color-text-tertiary)"}}>— optional</span></label>
+            <input style={{...S.input,padding:"7px 10px",fontSize:13}} type="text" placeholder="e.g. Spring 2026 Drop" value={memo} onChange={e=>setMemo(e.target.value)} disabled={busy}/>
           </div>
         </div>
 
-        <div style={S.card}>
-          <span style={S.sectionLabel}><i className="ti ti-file-type-pdf" aria-hidden="true" style={{marginRight:6,fontSize:12,verticalAlign:"-1px"}}/>Purchase order PDF</span>
-          {pdf?(
-            <div style={S.fileRow}>
-              <i className="ti ti-file-type-pdf" aria-hidden="true" style={{fontSize:26,color:"var(--color-text-secondary)"}}/>
-              <div style={{flex:1}}>
-                <p style={{margin:0,fontSize:14,fontWeight:500,color:"var(--color-text-primary)"}}>{pdfName}</p>
-                <span style={S.removeLink} onClick={resetPDF}>Remove</span>
+        <div style={{...S.card,padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+            <span style={{fontSize:12,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",color:"var(--color-text-secondary)"}}>Item master</span>
+            {imSource?(
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:13,color:"var(--color-text-success)",fontWeight:500}}>{imSource}</span>
+                <button style={S.btnReplace} onClick={()=>imRef.current?.click()}>Replace</button>
               </div>
-              <i className="ti ti-circle-check" aria-hidden="true" style={{fontSize:20,color:"var(--color-text-success)"}}/>
+            ):(
+              <span style={{fontSize:13,color:"var(--color-text-secondary)"}}>
+                <a href="https://4848284.app.netsuite.com/app/common/search/searchresults.nl?searchid=166419&whence=" target="_blank" rel="noreferrer" style={{color:"var(--color-text-primary)",fontWeight:500}}>Export from NS</a>
+                {" then "}
+                <span style={{cursor:"pointer",color:"var(--color-text-primary)",fontWeight:500,textDecoration:"underline"}} onClick={()=>imRef.current?.click()}>upload CSV</span>
+              </span>
+            )}
+          </div>
+          <input ref={imRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>loadIMCSV(e.target.files[0])}/>
+        </div>
+
+        <div style={pdf?{...S.card,padding:"0.75rem 1rem",marginBottom:"0.75rem"}:S.card}>
+          {pdf?(
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+              <span style={{fontSize:12,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",color:"var(--color-text-secondary)"}}>Purchase order PDF</span>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:13,fontWeight:500,color:"var(--color-text-primary)"}}>{pdfName}</span>
+                <button style={S.btnReplace} onClick={resetPDF}>Remove</button>
+              </div>
             </div>
           ):(
+            <>
+            <span style={S.sectionLabel}><i className="ti ti-file-type-pdf" aria-hidden="true" style={{marginRight:6,fontSize:12,verticalAlign:"-1px"}}/>Purchase order PDF</span>
             <div
               style={{...S.dzBase,...(pdfDrag?S.dzHover:{})}}
               onClick={()=>pdfRef.current?.click()}
               onDragOver={e=>{e.preventDefault();setPdfDrag(true);}}
               onDragLeave={()=>setPdfDrag(false)}
               onDrop={e=>{e.preventDefault();setPdfDrag(false);loadPDF(e.dataTransfer.files[0]);}}>
-              <i className="ti ti-file-type-pdf" aria-hidden="true" style={{fontSize:28,color:"var(--color-text-tertiary)",display:"block",marginBottom:6}}/>
-              <p style={{fontSize:14,color:"var(--color-text-secondary)",margin:0}}>Click or drag to upload PO PDF</p>
-              <p style={{fontSize:12,color:"var(--color-text-tertiary)",margin:"4px 0 0"}}>Supports any retailer PDF format</p>
+              <i className="ti ti-file-type-pdf" aria-hidden="true" style={{fontSize:36,color:"var(--color-text-secondary)",display:"block",marginBottom:10}}/>
+              <p style={{fontSize:15,fontWeight:500,color:"var(--color-text-primary)",margin:0}}>Click or drag to upload PO PDF</p>
+              <p style={{fontSize:13,color:"var(--color-text-secondary)",margin:"6px 0 0"}}>Supports any retailer PDF format</p>
             </div>
+            </>
           )}
           <input ref={pdfRef} type="file" accept="application/pdf" style={{display:"none"}} onChange={e=>loadPDF(e.target.files[0])}/>
         </div>
@@ -322,75 +305,14 @@ export default function App() {
             </div>
           </div>
 
-          <div style={{padding:"10px 14px",background:"var(--color-background-secondary)",borderRadius:8,fontSize:12,color:"var(--color-text-secondary)",marginBottom:"1rem"}}>
-            <span style={{color:"var(--color-text-primary)",fontWeight:500}}>Ship to: </span>{firstRow["Name"]}, {firstRow["Address 1"]}{firstRow["Address 2"]?", "+firstRow["Address 2"]:""}, {firstRow["City"]}, {firstRow["State"]} {firstRow["Zip"]}
-            <span style={{margin:"0 8px"}}>·</span>
-            <span style={{color:"var(--color-text-primary)",fontWeight:500}}>Ship date: </span>{result.shipDate}
-            <span style={{margin:"0 8px"}}>·</span>
-            <span style={{color:"var(--color-text-primary)",fontWeight:500}}>Cancel: </span>{result.cancelDate}
-          </div>
+
 
           <div style={{display:"flex",gap:10,justifyContent:"space-between"}}>
             <button style={S.btnOutline} onClick={resetPDF}><i className="ti ti-refresh" aria-hidden="true" style={{fontSize:15}}/>New PO</button>
             <button style={S.btnSuccess} onClick={()=>dlCSV(buildCSV(rows),`NS_${retailer.replace(/\s+/g,"_")}_PO${rows[0]?.["PO Number"]||""}.csv`)}><i className="ti ti-download" aria-hidden="true" style={{fontSize:15}}/>Download CSV</button>
+            <a href="https://4848284.app.netsuite.com/app/setup/assistants/nsimport/importassistant.nl?recid=111&new=T" target="_blank" rel="noreferrer" style={{...S.btnOutline,textDecoration:"none"}}><i className="ti ti-upload" aria-hidden="true" style={{fontSize:15}}/>Import CSV into NS</a>
           </div>
         </>)}
-      </>)}
-
-      {/* ITEM MASTER TAB */}
-      {mainTab==="itemmaster"&&(<>
-        <div style={S.card}>
-          <span style={S.sectionLabel}><i className="ti ti-database" aria-hidden="true" style={{marginRight:6,fontSize:12,verticalAlign:"-1px"}}/>Stored item master</span>
-          {imLoading?(
-            <p style={{fontSize:13,color:"var(--color-text-tertiary)",margin:0,textAlign:"center",padding:"1rem 0"}}>Loading…</p>
-          ):imMeta?(
-            <>
-              <div style={S.imStored}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <i className="ti ti-circle-check" aria-hidden="true" style={{fontSize:18,color:"var(--color-text-success)"}}/>
-                  <div>
-                    <p style={{margin:0,fontSize:13,fontWeight:500,color:"var(--color-text-success)"}}>{imMeta.name}</p>
-                    <p style={{margin:0,fontSize:12,color:"var(--color-text-success)",opacity:0.85}}>{imMeta.count.toLocaleString()} items · last updated {imMeta.savedAt}{imMeta.updatedBy?" by "+imMeta.updatedBy:""}</p>
-                  </div>
-                </div>
-                <button style={S.btnReplace} onClick={clearIM}>Clear</button>
-              </div>
-
-              {imDebug&&(
-                <div style={{marginTop:12,padding:"10px 12px",background:"var(--color-background-secondary)",borderRadius:8,fontSize:12}}>
-                  <p style={{margin:"0 0 4px",fontWeight:500,color:"var(--color-text-secondary)"}}>Detected column mapping (first row sample):</p>
-                  <p style={{margin:"2px 0",color:"var(--color-text-primary)"}}><strong>SKU:</strong> {imDebug.firstSKU}</p>
-                  <p style={{margin:"2px 0",color:"var(--color-text-primary)"}}><strong>Parent SKU:</strong> {imDebug.firstParent}</p>
-                  <p style={{margin:"2px 0",color:"var(--color-text-primary)"}}><strong>UPC Code:</strong> {imDebug.firstUPC}</p>
-                  <p style={{margin:"6px 0 2px",color:"var(--color-text-tertiary)"}}>First 15 detected columns: {imDebug.allKeys.join(", ")}</p>
-                </div>
-              )}
-            </>
-          ):(
-            <p style={{fontSize:13,color:"var(--color-text-secondary)",margin:0}}>No item master loaded yet. Upload one below.</p>
-          )}
-        </div>
-
-        <div style={S.card}>
-          <span style={S.sectionLabel}><i className="ti ti-upload" aria-hidden="true" style={{marginRight:6,fontSize:12,verticalAlign:"-1px"}}/>Upload {imMeta?"replacement ":""}item master</span>
-          <div
-            style={{...S.dzBase,...(imDrag?S.dzHover:{})}}
-            onClick={()=>imRef.current?.click()}
-            onDragOver={e=>{e.preventDefault();setImDrag(true);}}
-            onDragLeave={()=>setImDrag(false)}
-            onDrop={e=>{e.preventDefault();setImDrag(false);loadIM(e.dataTransfer.files[0]);}}>
-            <i className="ti ti-table" aria-hidden="true" style={{fontSize:28,color:"var(--color-text-tertiary)",display:"block",marginBottom:6}}/>
-            <p style={{fontSize:14,color:"var(--color-text-secondary)",margin:0}}>Click or drag to upload item master</p>
-            <p style={{fontSize:12,color:"var(--color-text-tertiary)",margin:"4px 0 0"}}>Tab-delimited .txt or .tsv exported from Excel</p>
-          </div>
-          <input ref={imRef} type="file" accept=".txt,.tsv,.csv" style={{display:"none"}} onChange={e=>loadIM(e.target.files[0])}/>
-        </div>
-
-        <div style={{padding:"10px 14px",background:"var(--color-background-secondary)",borderRadius:8,fontSize:12,color:"var(--color-text-secondary)"}}>
-          <i className="ti ti-info-circle" aria-hidden="true" style={{fontSize:14,marginRight:6,verticalAlign:"-1px"}}/>
-          The item master is saved to <strong>shared storage</strong> — anyone on your team who opens this artifact will automatically have access to it. Upload it once and the whole team is set.
-        </div>
-      </>)}
     </div>
   );
 }
