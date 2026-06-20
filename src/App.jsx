@@ -81,6 +81,8 @@ const TJM_DC_MAP = {
   "45": { address1: "292190 Nose Creek Blvd", city: "Rocky View County", state: "AB", zip: "T4A 3N7" },
 };
 
+const MIS_PROMPT=`Extract data from this Mark-It Smart purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","poDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","notes":"","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","lineItems":[{"sku":"","quantity":0,"unitCost":0.00}]}\n\nRules:\n- poNumber=PO # field value.\n- poDate=PO Date in MM/DD/YYYY.\n- shipDate=Ship Date Required in MM/DD/YYYY.\n- notes=complete verbatim text of the Notes section, preserving line breaks as \\n.\n- Shipping address block has: name line, optional attention/location line (before the street), street address, city/state, zip, country.\n- shipToName=first line of shipping address.\n- shipToAttention=second line if it is a name or location (not a street address); empty string if none.\n- shipToAddress1=street address line (e.g. 777 Fonner Park Rd).\n- shipToState=2-letter abbreviation. shipToCountry=2-letter ISO (US, CA, etc.).\n- lineItems: sku=the SKU code exactly as shown (e.g. DPIC100GBAQ04). quantity=integer. unitCost=unit cost as decimal.\n- Extract ALL line items.\n- ONLY JSON.`;
+
 const TJM_CAN_PROMPT=`Extract data from this TJ Maxx Canada purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"chainName":"","poNumber":"","prefix":"","deptNo":"","dealNumber":"","orderDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","cancelDate":"MM/DD/YYYY","lineItems":[{"vendorStyle":"","style":"","unitCost":0.00,"units":0}]}\n\nRules:\n- chainName = the large text in the top-left of page 1 (HOMESENSE, WINNERS, or MARSHALLS — exact spelling, uppercase)\n- poNumber = Import PO Number with the space replaced by a hyphen (e.g. "45 488676" → "45-488676")\n- prefix = the number before the space in Import PO Number (e.g. "45")\n- deptNo = DEPT. NO field value\n- dealNumber = DEAL # field value\n- orderDate = DEAL CREATE DATE in MM/DD/YYYY\n- shipDate = START SHIP DATE in MM/DD/YYYY\n- cancelDate = CANCEL IF NOT RECEIVED AT FREIGHT FORWARDER BY date in MM/DD/YYYY\n- lineItems: each row in the items table. vendorStyle=VENDOR STYLE column. style=STYLE column (6-digit). unitCost=UNIT COST (decimal). units=UNITS (integer).\n- Extract ALL line items.\n- ONLY JSON.`;
 
 const S = {
@@ -175,7 +177,7 @@ export default function App() {
     const normVIN = String(vin||"").trim().toUpperCase();
     const normUPC = String(upc||"").replace(/\D/g,"");
     if(normVIN){
-      const m=items.find(it=>String(it["Parent SKU"]||"").trim().toUpperCase()===normVIN||String(it["Child SKU"]||"").trim().toUpperCase()===normVIN);
+      const m=items.find(it=>String(it["Child SKU"]||"").trim().toUpperCase()===normVIN)||items.find(it=>String(it["Parent SKU"]||"").trim().toUpperCase()===normVIN);
       if(m) return m;
     }
     if(normUPC){
@@ -606,13 +608,14 @@ export default function App() {
         const isJungleJims = retailer === "Jungle Jims Market Inc";
         const isImperial = retailer === "Imperial Distributors Inc.";
         const isTjmCan = retailer === "TJ Maxx Canada";
+        const isMis = retailer === "Mark-It Smart Inc.";
         const resp = await fetch("/api/anthropic/v1/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "claude-sonnet-4-6",
             max_tokens: 4096,
-            system: isHyVee ? HY_VEE_PROMPT : isJungleJims ? JJ_PROMPT : isImperial ? IMPERIAL_PROMPT : isTjmCan ? TJM_CAN_PROMPT : PROMPT,
+            system: isHyVee ? HY_VEE_PROMPT : isJungleJims ? JJ_PROMPT : isImperial ? IMPERIAL_PROMPT : isTjmCan ? TJM_CAN_PROMPT : isMis ? MIS_PROMPT : PROMPT,
             messages: [{
               role: "user",
               content: [
@@ -651,6 +654,15 @@ export default function App() {
           tjmCancelDate = fmtDate(po.cancelDate);
           tjmMabd = tjmCancelDate;
           tjmMemo = `P.O. ${po.poNumber} Dpt. ${tjmDeptNo} - Deal # ${po.dealNumber} - Carton markings must include: Purchase Order Number including Purchase Order Prefix, Ship To Address and Ship From Address, Vendor Style Number, Department Number, Origin Country`;
+        }
+
+        let misDate = "", misShipDate = "", misCancelDate = "", misMabd = "", misMemo = "";
+        if (isMis) {
+          misDate = fmtDate(po.poDate);
+          misShipDate = fmtDate(po.shipDate);
+          misCancelDate = misShipDate;
+          misMabd = misShipDate ? addBizDays(misShipDate, 5) : "";
+          misMemo = po.notes || "";
         }
 
         let newRows = [], unmatched = [], caseMismatches = [];
@@ -733,6 +745,22 @@ export default function App() {
             qty = Number(line.units) || 0;
             rate = Number(line.unitCost) || 0;
             rowCustomerPartNum = String(line.style || "");
+          } else if (isMis) {
+            const sku = String(line.sku || "").trim();
+            const m = im?.length ? (
+              im.find(it => String(it["Child SKU"] || "").trim().toUpperCase() === sku.toUpperCase()) ||
+              im.find(it => String(it["Parent SKU"] || "").trim().toUpperCase() === sku.toUpperCase())
+            ) : null;
+            if (m) {
+              nsSku = String(m["Child SKU"] || "").trim();
+              externalId = String(m["Parent SKU"] || "").trim();
+            } else {
+              unmatched.push(sku || "");
+              nsSku = sku;
+              externalId = "";
+            }
+            qty = Number(line.quantity) || 0;
+            rate = Number(line.unitCost) || 0;
           } else {
             if (im?.length) {
               const m = lookup(im, line.upc, line.vendorItemNum);
@@ -757,16 +785,17 @@ export default function App() {
             ? `PODate ${po.orderDate} RequestedShipDate ${shipDate} CancelDate ${cancelDate} MustArriveBy ${mabd}`
             : isJungleJims ? jjMemo
             : isTjmCan ? tjmMemo
+            : isMis ? misMemo
             : (memo || po.memo || "");
           const shipToName = po.shipToName || (isHyVee ? "HY-VEE, INC." : "");
           newRows.push({
-            "Order #": po.poNumber, "NS SKU": nsSku, "Date": fmtDate(po.orderDate),
+            "Order #": po.poNumber, "NS SKU": nsSku, "Date": isMis ? misDate : fmtDate(po.orderDate),
             "Quantity": qty, "Item Rate": rate, "Amount": parseFloat((qty * rate).toFixed(2)),
             "Is EDI Sent": rc.isEdiSent, "PO Number": po.poNumber, "NS CUSTOMER": rc.nsCustomer,
             "Status": orderStatus,
-            "Ship Date": isTjmCan ? tjmShipDate : isJungleJims ? jjShipDate : shipDate,
-            "Cancel Date": isTjmCan ? tjmCancelDate : isJungleJims ? jjCancelDate : cancelDate,
-            "Must Arrive By Date": isTjmCan ? tjmMabd : isJungleJims ? jjMabd : mabd,
+            "Ship Date": isTjmCan ? tjmShipDate : isJungleJims ? jjShipDate : isMis ? misShipDate : shipDate,
+            "Cancel Date": isTjmCan ? tjmCancelDate : isJungleJims ? jjCancelDate : isMis ? misCancelDate : cancelDate,
+            "Must Arrive By Date": isTjmCan ? tjmMabd : isJungleJims ? jjMabd : isMis ? misMabd : mabd,
             "Name": isTjmCan ? tjmChainName : shipToName,
             "Attention": isTjmCan ? "" : (po.shipToAttention || ""),
             "Address 1": isTjmCan ? (tjmDcAddress.address1 || "") : po.shipToAddress1,
@@ -809,6 +838,7 @@ export default function App() {
   const isJungleJimsRetailer = retailer === "Jungle Jims Market Inc";
   const isImperialRetailer = retailer === "Imperial Distributors Inc.";
   const isTjmCanRetailer = retailer === "TJ Maxx Canada";
+  const isMisRetailer = retailer === "Mark-It Smart Inc.";
   const isSamplesRetailer = retailer === "Samples";
   const activeCols = isGnbRetailer ? GNB_APPROVAL_COLS : APPROVAL_COLS;
   const amountColIdx = activeCols.findIndex(c => c.key === "amount");
@@ -829,7 +859,7 @@ export default function App() {
     "Is Sample": rc.isSample,
     ...(retailer === "Samples" ? { "Item Rate": 0, "Amount": 0 } : {}),
     // GNB and JJ memos are auto-generated per row; don't override
-    ...(!isGnbRetailer && !isJungleJimsRetailer && !isTjmCanRetailer && memo ? { "Memo": memo } : {}),
+    ...(!isGnbRetailer && !isJungleJimsRetailer && !isTjmCanRetailer && !isMisRetailer && memo ? { "Memo": memo } : {}),
     "Item": r["Parent SKU"] ? `${r["Parent SKU"]} : ${r["NS SKU"]}` : r["NS SKU"] || "",
     "Customer": retailer === "Samples" && samplesSubcustomer ? `Samples : Samples - ${samplesSubcustomer}` : rc.nsCustomer,
     "Addressee": r["Name"] || "",
