@@ -3,39 +3,54 @@ import * as XLSX from "xlsx";
 import JSZip from "jszip";
 
 const RETAILERS = {
-  "BJ's Wholesale Club": { nsCustomer: "BJs Wholesale Corporate : BJs Wholesale", shipMethod: "Route", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No" },
-  "Cost Plus World Market": { nsCustomer: "Cost Plus World Market", shipMethod: "Route", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", dev: true },
-  "Gilt": { nsCustomer: "Gilt", shipMethod: "Route", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", dev: true },
-  "Global New Beginnings": { nsCustomer: "Global New Beginnings Inc.", shipMethod: "Collect", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", type: "gnb" },
-  "Hy-Vee": { nsCustomer: "Hy-Vee", shipMethod: "ROUTEPPD", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", orderUnit: "cases" },
-  "Imperial Distributors Inc.": { nsCustomer: "Imperial Distributors Inc.", shipMethod: "ROUTEPPD", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", defaultMemo: "Frgt Terms :$1000 Prepaid", hideCols: ["Freight Account #","SCAC"] },
-  "Jungle Jims Market Inc": { nsCustomer: "Jungle Jims Market Inc", shipMethod: "UPS Ground", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", defaultMemo: "Packing slip or invoice must be on the outside of the package, with the department specified. Jungle Jim's does not accept shipments from UPS freight. UPS Ground is Fine.", hideCols: ["Customer Part Number","Freight Account #","SCAC"], showCols: {"Items": ["Department"]} },
-  "Mark-It Smart Inc.": { nsCustomer: "Mark-It Smart Inc.", shipMethod: "Route", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", dev: true },
-  "Samples": { nsCustomer: "Samples", shipMethod: "DPP", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "Yes", dev: true },
-  "Sur La Table": { nsCustomer: "Sur La Table", shipMethod: "Route", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", dev: true },
-  "TJ Maxx Canada": { nsCustomer: "TJ Maxx Canada", shipMethod: "Route", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", dev: true },
-  "Verdi Commerce LLC": { nsCustomer: "Verdi Commerce LLC", shipMethod: "Route", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", dev: true },
-  "Walmart Marketplace": { nsCustomer: "Walmart Corporate : Walmart Marketplace", shipMethod: "Route", status: "Pending Fulfillment", priceLevel: "Custom", isEdiSent: "No", isSample: "No", dev: true },
+  "BJ's Wholesale Club": { nsCustomer: "BJs Wholesale Corporate : BJs Wholesale", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No" },
+  "Cost Plus World Market": { nsCustomer: "Cost Plus World Market", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
+  "Gilt": { nsCustomer: "Gilt", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
+  "Global New Beginnings": { nsCustomer: "Global New Beginnings Inc.", shipMethod: "Collect", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", type: "gnb" },
+  "Hy-Vee": { nsCustomer: "Hy-Vee", shipMethod: "ROUTEPPD", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", orderUnit: "cases" },
+  "Imperial Distributors Inc.": { nsCustomer: "Imperial Distributors Inc.", shipMethod: "ROUTEPPD", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultMemo: "Frgt Terms :$1000 Prepaid", hideCols: ["Freight Account #","SCAC"] },
+  "Jungle Jims Market Inc": { nsCustomer: "Jungle Jims Market Inc", shipMethod: "UPS Ground", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultMemo: "Packing slip or invoice must be on the outside of the package, with the department specified. Jungle Jim's does not accept shipments from UPS freight. UPS Ground is Fine.", hideCols: ["Customer Part Number","Freight Account #","SCAC"], showCols: {"Items": ["Department Number"]} },
+  "Mark-It Smart Inc.": { nsCustomer: "Mark-It Smart Inc.", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
+  "Samples": { nsCustomer: "Samples", shipMethod: "DPP", status: "Pending Fulfillment", isEdiSent: "No", isSample: "Yes", dev: true },
+  "Sur La Table": { nsCustomer: "Sur La Table", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
+  "TJ Maxx Canada": { nsCustomer: "T.J. Maxx Corporate : T.J. Maxx - Canada", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
+  "Verdi Commerce LLC": { nsCustomer: "Verdi Commerce LLC", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
+  "Walmart Marketplace": { nsCustomer: "Walmart Corporate : Walmart Marketplace", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
 };
 const SHIP_METHODS = ["Collect","DPP","FedEx 2Day","FedEx Ground","FedEx Home Delivery","FedEx International Econ","FedEx SmartPost","Fedex Standard Overnight","Route","ROUTEPPD","UPS 2-Day","UPS 3-Day","UPS Express Saver","UPS Ground","UPS Overnight","UPS Surepost","USPS","USPS Ground Advantage"];
 const STATUSES = ["Pending Fulfillment","Pending Approval"];
-const CSV_HEADERS = ["Order #","NS SKU","Date","Quantity","Rate","Amount","Is EDI Sent","Is Sample","PO Number","NS CUSTOMER","Price Level","Status","Ship Date","Cancel Date","Must Arrive By Date","Name","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
+const CSV_HEADERS = ["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
+const SAMPLES_CSV_HEADERS = ["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Is Sample","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
 const IM_KEY = "item-master-data";
 const TABS_PREVIEW = [
-  { label: "Header", cols: ["Order #","Date","Is EDI Sent","PO Number","NS CUSTOMER","Price Level","Status","Ship Date","Cancel Date","Must Arrive By Date","Name","Address 1","Address 2","City","State","Zip","Country","Ship Method","Freight Account #","SCAC","Memo"] },
-  { label: "Items", cols: ["NS SKU","Customer Part Number","Quantity","Rate","Amount"] },
+  { label: "Header", cols: ["Date","PO Number","Customer","Status","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Freight Account #","SCAC","Memo"] },
+  { label: "Items", cols: ["Item","Customer Part Number","Quantity","Item Rate","Amount","Department Number","Is Sample"] },
+];
+const REQUIRED_FIELDS = [
+  {label:"Date",key:"Date"},{label:"PO Number",key:"PO Number"},{label:"Name",key:"Customer"},
+  {label:"Status",key:"Status"},{label:"Item",key:"Item"},{label:"Quantity",key:"Quantity"},
+  {label:"Item Rate",key:"Item Rate"},{label:"Amount",key:"Amount"},{label:"Ship Date",key:"Ship Date"},
+  {label:"Must Arrive By Date",key:"Must Arrive By Date"},{label:"Addressee",key:"Addressee"},
+  {label:"Address 1",key:"Address 1"},{label:"City",key:"City"},{label:"State",key:"State"},
+  {label:"Zip",key:"Zip"},{label:"Country",key:"Country"},
 ];
 
 function parseCsvRow(line){const vals=[];let cur="",inQ=false;for(let i=0;i<line.length;i++){const ch=line[i];if(inQ){if(ch==='"'&&line[i+1]==='"'){cur+='"';i++;}else if(ch==='"'){inQ=false;}else{cur+=ch;}}else{if(ch==='"'){inQ=true;}else if(ch===','){vals.push(cur);cur="";}else{cur+=ch;}}}vals.push(cur);return vals;}
 function parseImCsv(text){const lines=text.replace(/\r/g,"").trim().split("\n");if(!lines.length)return[];const hdrs=parseCsvRow(lines[0]).map(h=>h.trim());return lines.slice(1).filter(l=>l.trim()).map(line=>{const vals=parseCsvRow(line);const obj={};hdrs.forEach((h,i)=>{obj[h]=(vals[i]||"").trim();});return obj;});}
 function esc(v){if(v===null||v===undefined)return "";const s=String(v);return(s.includes(",")||s.includes('"')||s.includes("\n"))?'"'+s.replace(/"/g,'""')+'"':s;}
-function buildCSV(rows){return[CSV_HEADERS.join(","),...rows.map(r=>CSV_HEADERS.map(h=>esc(r[h])).join(","))].join("\n");}
-const GNB_CSV_HEADERS=["Order #","NS SKU","Customer Part Number","Date","Quantity","Rate","Amount","Is EDI Sent","PO Number","NS CUSTOMER","Price Level","Status","Ship Date","Cancel Date","Must Arrive By Date","Name","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Freight Account #","SCAC","Memo"];
-function buildGnbCSV(rows){return[GNB_CSV_HEADERS.join(","),...rows.map(r=>GNB_CSV_HEADERS.map(h=>esc(r[h])).join(","))].join("\n");}
-const IMPERIAL_CSV_HEADERS=["Order #","NS SKU","Customer Part Number","Date","Quantity","Rate","Amount","Is EDI Sent","PO Number","NS CUSTOMER","Price Level","Status","Ship Date","Cancel Date","Must Arrive By Date","Name","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
-function buildImperialCSV(rows){return[IMPERIAL_CSV_HEADERS.join(","),...rows.map(r=>IMPERIAL_CSV_HEADERS.map(h=>esc(r[h])).join(","))].join("\n");}
-const JJ_CSV_HEADERS=["Order #","NS SKU","Date","Quantity","Rate","Amount","Is EDI Sent","PO Number","NS CUSTOMER","Department","Price Level","Status","Ship Date","Cancel Date","Must Arrive By Date","Name","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
-function buildJjCSV(rows){return[JJ_CSV_HEADERS.join(","),...rows.map(r=>JJ_CSV_HEADERS.map(h=>esc(r[h])).join(","))].join("\n");}
+function hasVal(v){return v!=null&&String(v).trim()!=="";}
+function buildFilteredCSV(headers,rows){const active=headers.filter(h=>rows.some(r=>hasVal(r[h])));return[active.join(","),...rows.map(r=>active.map(h=>esc(r[h])).join(","))].join("\n");}
+function buildCSV(rows){return buildFilteredCSV(CSV_HEADERS,rows);}
+function buildSamplesCSV(rows){return buildFilteredCSV(SAMPLES_CSV_HEADERS,rows);}
+const GNB_CSV_HEADERS=["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Freight Account #","SCAC","Memo"];
+function buildGnbCSV(rows){return buildFilteredCSV(GNB_CSV_HEADERS,rows);}
+const IMPERIAL_CSV_HEADERS=["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
+function buildImperialCSV(rows){return buildFilteredCSV(IMPERIAL_CSV_HEADERS,rows);}
+const JJ_CSV_HEADERS=["Date","PO Number","Customer","Status","Item","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Department Number","Memo"];
+function buildJjCSV(rows){return buildFilteredCSV(JJ_CSV_HEADERS,rows);}
+const TJM_CAN_CSV_HEADERS=["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Department Number","Memo"];
+function buildTjmCanCSV(rows){return[TJM_CAN_CSV_HEADERS.join(","),...rows.map(r=>[r["Date"]||"",r["PO Number"]||"",r["Customer"]||"",r["Status"]||"",r["Item"]||"",r["Customer Part Number"]||"",r["Quantity"]??"",r["Item Rate"]??"",r["Amount"]??"",r["Ship Date"]||"",r["Cancel Date"]||"",r["Must Arrive By Date"]||"",r["Addressee"]||"",r["Attention"]||"",r["Address 1"]||"",r["Address 2"]||"",r["City"]||"",r["State"]||"",r["Zip"]||"",r["Country"]||"",r["Ship Method"]||"",r["Department Number"]||"",r["Memo"]||""].map(v=>esc(v)).join(","))].join("\n");}
+function buildCpnCSV(rows){const seen=new Set();const lines=[["Customer","Item","Name"]];for(const r of rows){const cpn=String(r["Customer Part Number"]||"").trim();const childSku=String(r["NS SKU"]||"").trim();const parentSku=String(r["Parent SKU"]||"").trim();if(!cpn||!childSku)continue;const item=parentSku?`${parentSku} : ${childSku}`:childSku;const customer=String(r["Customer"]||"").trim();const key=`${customer}|${item}|${cpn}`;if(seen.has(key))continue;seen.add(key);lines.push([customer,item,cpn]);}return lines.map(row=>row.map(v=>esc(v)).join(",")).join("\n");}
 function fmtDate(d){if(!d)return d;const p=String(d).split("/");if(p.length===3&&p[2].length===2){const y=parseInt(p[2],10);p[2]=y<=49?`20${p[2].padStart(2,"0")}`:`19${p[2].padStart(2,"0")}`;}return p.join("/");}
 function dlCSV(content,name){const b=new Blob(["﻿"+content],{type:"text/csv;charset=utf-8;"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
 function isoToMDY(iso){if(!iso)return "";const[y,m,d]=iso.split("-");return `${parseInt(m)}/${parseInt(d)}/${y}`;}
@@ -44,7 +59,7 @@ function addDays(ds,n){if(!ds)return "";const[m,d,y]=ds.split("/").map(Number);c
 function subBizDays(ds,n){if(!ds)return "";const[m,d,y]=ds.split("/").map(Number);const dt=new Date(y,m-1,d);let rem=n;while(rem>0){dt.setDate(dt.getDate()-1);const dow=dt.getDay();if(dow!==0&&dow!==6)rem--;}return `${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}/${dt.getFullYear()}`;}
 function addBizDays(ds,n){if(!ds)return "";const[m,d,y]=ds.split("/").map(Number);const dt=new Date(y,m-1,d);let rem=n;while(rem>0){dt.setDate(dt.getDate()+1);const dow=dt.getDay();if(dow!==0&&dow!==6)rem--;}return `${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}/${dt.getFullYear()}`;}
 
-const PROMPT=`Extract data from this purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","deliveryDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY or empty","cancelDate":"MM/DD/YYYY or empty","mustArriveByDate":"MM/DD/YYYY or empty","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":"","lineItems":[{"upc":"","vendorItemNum":"","quantity":0,"unitPrice":0,"description":""}]}\n\nRules: mustArriveByDate=deliveryDate if only one date. shipDate/cancelDate=empty if not stated. memo=any delivery appointment or scheduling note on the PO (e.g. "Vendor to call Shipping Location for appointment"); leave empty if none. Extract ALL lines. ONLY JSON.`;
+const PROMPT=`Extract data from this purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","deliveryDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY or empty","cancelDate":"MM/DD/YYYY or empty","mustArriveByDate":"MM/DD/YYYY or empty","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":"","lineItems":[{"upc":"","vendorItemNum":"","itemNum":"","quantity":0,"unitPrice":0,"description":""}]}\n\nRules: mustArriveByDate=deliveryDate if only one date. shipDate/cancelDate=empty if not stated. memo=any delivery appointment or scheduling note on the PO (e.g. "Vendor to call Shipping Location for appointment"); leave empty if none. itemNum=the retailer's own item/SKU number for the product (e.g. "ITEM NUM", "Item #", "Item Number" column); empty string if not present. Extract ALL lines. ONLY JSON.`;
 
 const HY_VEE_PROMPT=`Extract data from this Hy-Vee purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","mustArriveByDate":"MM/DD/YYYY","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":"","lineItems":[{"mfgNum":"","prodNum":"","cases":0,"masterPack":0,"netCostPerCase":0,"description":""}]}\n\nRules: Each line item spans two rows. Row 1: 6-digit MFG# (in VENDOR column), Master Pack/Size, Order Code. Row 2: ORDER QTY (cases ordered), ORDER UNIT (CASES), 5-digit PROD#, description, then cost columns. mfgNum=6-digit MFG# from row 1. prodNum=5-digit PROD# from row 2. cases=ORDER QTY integer. masterPack=the integer before the backslash in the MASTER PACK/SIZE field (e.g. "6\\1EA-12X5" → 6). netCostPerCase=NET COST column value (third cost column). mustArriveByDate=SCHEDULE SHIPMENT TO ARRIVE ON date. memo=always empty string (ignore SPECIAL ALLOWANCES/MESSAGES). Extract ALL line items. ONLY JSON.`;
 
@@ -55,6 +70,18 @@ const JJ_PROMPT=`Extract data from this Jungle Jim's purchase order PDF. Return 
 const SAMPLES_PROMPT=`Parse this sample request message from an employee. It may contain one or more separate orders (each going to a distinct shipping address). Return ONLY valid JSON, no markdown, no explanation.\n\n{"orders":[{"lineItems":[{"sku":"exact SKU string as written","quantity":0}],"shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":""}]}\n\nRules:\n- Each distinct shipping address = one order object.\n- sku = the product code exactly as written (e.g. DMW10008, DCAF26CMGBCM02). Strip product descriptions; keep only the code.\n- quantity = integer. "1x of each" or "1x" before a list = 1 for every item. Parse the number before "x" as the quantity.\n- shipToAttention = name from "Attn:", "ATTN:", or similar label; empty string if none.\n- shipToAddress2 = suite, floor, door, unit, building — any secondary address line; empty string if none.\n- shipToCountry = 2-letter ISO: "US" for USA, "CA" for Canada.\n- memo = any extra delivery notes (door numbers, division, line review, room numbers, deal numbers, etc.) not captured in other fields; empty string if none.\n- ONLY JSON.`;
 
 const GNB_PROMPT=`This is a Global New Beginnings (GNBI) document. Identify its type and extract accordingly. Return ONLY valid JSON, no markdown, no explanation.\n\nIf this is a PURCHASE ORDER (has "PURCHASE ORDER" heading, a PO # field, and SKU line items with unit cost):\n{"docType":"po","poNumber":"number only e.g. 3320","orderDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","sku":"exact SKU string e.g. RSMS150GBRR24","unitCost":0.0000}\n\nIf this is a DISTRIBUTION SHEET (table of fulfillment center rows with a Quill P.O. # column and ship-to addresses):\n{"docType":"distro","gnbiPoNumber":"","itemNum":"Item # value e.g. RSMS150GBRR24","quillSkuNum":"Quill SKU # value e.g. 3171196","primaryShipDate":"MM/DD/YYYY","locations":[{"quillPoNum":"e.g. XSYI66-1","name":"full center name e.g. Quill Fulfillment Center #472","address1":"street address line 1","address2":"street address line 2 if present else empty","city":"","state":"2-letter","zip":"","country":"US","quantity":0,"shipMethod":"exact carrier name as shown on the sheet e.g. Fed Ex Ground, UPS Ground, T-Force, Roadrunner","scac":"SCAC code(s) exactly as shown e.g. RDFS or UPGF/TFIN; empty string if not shown","shipDate":"MM/DD/YYYY"}]}\n\nDistro rules: exclude rows where quantity=0. shipMethod=the exact carrier name from the sheet — do NOT normalize or replace unknown carriers with Fed Ex Ground or UPS Ground. scac=the raw SCAC string as printed (may contain slashes for multiple codes); empty string if absent. shipDate=the "Latest Acceptable Ship Date" for that row; if blank use primaryShipDate. ONLY JSON.`;
+
+const TJM_DC_MAP = {
+  "10": { address1: "55 West Drive", city: "Brampton", state: "ON", zip: "L6T 4A1" },
+  "20": { address1: "3185 American Drive", city: "Mississauga", state: "ON", zip: "L4V 1B8" },
+  "25": { address1: "3185 American Drive", city: "Mississauga", state: "ON", zip: "L4V 1B8" },
+  "30": { address1: "8181 Churchill Street", city: "Delta", state: "BC", zip: "V4K 0C2" },
+  "35": { address1: "8181 Churchill Street", city: "Delta", state: "BC", zip: "V4K 0C2" },
+  "40": { address1: "292190 Nose Creek Blvd", city: "Rocky View County", state: "AB", zip: "T4A 3N7" },
+  "45": { address1: "292190 Nose Creek Blvd", city: "Rocky View County", state: "AB", zip: "T4A 3N7" },
+};
+
+const TJM_CAN_PROMPT=`Extract data from this TJ Maxx Canada purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"chainName":"","poNumber":"","prefix":"","deptNo":"","dealNumber":"","orderDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","cancelDate":"MM/DD/YYYY","lineItems":[{"vendorStyle":"","style":"","unitCost":0.00,"units":0}]}\n\nRules:\n- chainName = the large text in the top-left of page 1 (HOMESENSE, WINNERS, or MARSHALLS — exact spelling, uppercase)\n- poNumber = Import PO Number with the space replaced by a hyphen (e.g. "45 488676" → "45-488676")\n- prefix = the number before the space in Import PO Number (e.g. "45")\n- deptNo = DEPT. NO field value\n- dealNumber = DEAL # field value\n- orderDate = DEAL CREATE DATE in MM/DD/YYYY\n- shipDate = START SHIP DATE in MM/DD/YYYY\n- cancelDate = CANCEL IF NOT RECEIVED AT FREIGHT FORWARDER BY date in MM/DD/YYYY\n- lineItems: each row in the items table. vendorStyle=VENDOR STYLE column. style=STYLE column (6-digit). unitCost=UNIT COST (decimal). units=UNITS (integer).\n- Extract ALL line items.\n- ONLY JSON.`;
 
 const S = {
   card:{background:"var(--color-background-primary)",border:"1px solid var(--color-border-secondary)",borderRadius:12,padding:"1.4rem 1.5rem",marginBottom:"1.1rem"},
@@ -134,7 +161,7 @@ export default function App() {
     const reader=new FileReader();
     reader.onload=(e)=>{
       const parsed=parseImCsv(e.target.result);
-      const items=parsed.map(r=>({'Name':r['Name']||'','External ID':r['External ID']||'','UPC Code':r['UPC Code']||'','Casepack Outer':r['Casepack Outer']||''})).filter(r=>r['Name']);
+      const items=parsed.map(r=>({'Child SKU':r['Child SKU']||'','Parent SKU':r['Parent SKU']||'','UPC Code':r['UPC Code']||'','Casepack Outer':r['Casepack Outer']||''})).filter(r=>r['Child SKU']);
       if(!items.length){setImSource("Error: no valid items found");return;}
       setIm(items);
       setImSource(`CSV · ${items.length} items · cached ${new Date().toLocaleDateString()}`);
@@ -148,7 +175,7 @@ export default function App() {
     const normVIN = String(vin||"").trim().toUpperCase();
     const normUPC = String(upc||"").replace(/\D/g,"");
     if(normVIN){
-      const m=items.find(it=>String(it["External ID"]||"").trim().toUpperCase()===normVIN);
+      const m=items.find(it=>String(it["Parent SKU"]||"").trim().toUpperCase()===normVIN||String(it["Child SKU"]||"").trim().toUpperCase()===normVIN);
       if(m) return m;
     }
     if(normUPC){
@@ -237,10 +264,10 @@ export default function App() {
     {key:"poNumber",label:"PO/Check #",w:110},
     {key:"status",label:"Status",w:130},
     {key:"name",label:"Customer",w:220},
-    {key:"externalId",label:"External ID",w:100},
+    {key:"externalId",label:"Parent SKU",w:110},
     {key:"description",label:"Description",w:190},
     {key:"quantity",label:"Qty",w:70},
-    {key:"rate",label:"Rate",w:80},
+    {key:"rate",label:"Item Rate",w:80},
     {key:"amount",label:"Amount",w:90},
     {key:"shipDate",label:"Ship Date",w:100},
     {key:"cancelDate",label:"Cancel Date",w:100},
@@ -260,7 +287,7 @@ export default function App() {
     {key:"status",label:"Status",w:130},
     {key:"nsSku",label:"NS SKU",w:190},
     {key:"quantity",label:"Qty",w:65},
-    {key:"rate",label:"Rate",w:75},
+    {key:"rate",label:"Item Rate",w:75},
     {key:"amount",label:"Amount",w:85},
     {key:"shipDate",label:"Ship Date",w:95},
     {key:"cancelDate",label:"Cancel Date",w:95},
@@ -297,11 +324,11 @@ export default function App() {
         poNumber: r["PO Number"] || "",
         status: r._poHasMismatch ? "Pending Approval" : curOrderStatus,
         name: r["NS CUSTOMER"] || rc?.nsCustomer || "",
-        externalId: r["External ID"] || "",
+        externalId: r["Parent SKU"] || "",
         description: r["Description"] || "",
         nsSku: r["NS SKU"] || "",
         quantity: r["Quantity"] ?? 0,
-        rate: r["Rate"] ?? 0,
+        rate: r["Item Rate"] ?? 0,
         amount: r["Amount"] ?? 0,
         shipDate: r["Ship Date"] || "",
         cancelDate: r["Cancel Date"] || "",
@@ -348,7 +375,7 @@ export default function App() {
     const poNums = approval.orders.map(o => o.poNumber).join("_");
     const allLines = approval.orders.flatMap(o => o.lines);
     if (RETAILERS[retailer]?.type === "gnb") {
-      const headers = ["Date","Quill PO #","Status","NS SKU","Quantity","Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Ship To","Address 1","City","State","Zip","Ship Method","Freight Account #","SCAC"];
+      const headers = ["Date","Quill PO #","Status","NS SKU","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Ship To","Address 1","City","State","Zip","Ship Method","Freight Account #","SCAC"];
       const data = [headers, ...allLines.map(l => [
         l.date, l.orderNum, l.status, l.nsSku,
         parseFloat(l.quantity)||0, parseFloat(l.rate)||0, parseFloat(l.amount)||0,
@@ -363,7 +390,7 @@ export default function App() {
       XLSX.writeFile(wb, `GNB_PO${poNums}_Review.xlsx`);
       return;
     }
-    const headers = ["Date","Order #","PO/Check Number","Status","Name","External ID","Description","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Status","Shipping Addressee","Shipping Address 1","Shipping Address 2","Shipping City","Shipping State/Province","Shipping Zip"];
+    const headers = ["Date","Order #","PO/Check Number","Status","Name","Parent SKU","Description","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Status","Shipping Addressee","Shipping Address 1","Shipping Address 2","Shipping City","Shipping State/Province","Shipping Zip"];
     const data = [
       headers,
       ...allLines.map(l => [
@@ -408,24 +435,24 @@ export default function App() {
         orders.forEach(order => {
           (order.lineItems || []).forEach(line => {
             const m = im?.length ? lookup(im, null, line.sku) : null;
-            const nsSku = m ? String(m["Name"] || "").trim() : line.sku || "";
-            const externalId = m ? String(m["External ID"] || "").trim() : line.sku || "";
+            const nsSku = m ? String(m["Child SKU"] || "").trim() : line.sku || "";
+            const externalId = m ? String(m["Parent SKU"] || "").trim() : line.sku || "";
             if (!m && line.sku) allUnmatched.push(line.sku);
             samplesRows.push({
               "Order #": "", "NS SKU": nsSku,
               "Date": isoToMDY(localISODate()),
-              "Quantity": Number(line.quantity) || 1, "Rate": 0, "Amount": 0,
+              "Quantity": Number(line.quantity) || 1, "Item Rate": 0, "Amount": 0,
               "Is EDI Sent": rc.isEdiSent, "Is Sample": rc.isSample,
               "PO Number": "",
               "NS CUSTOMER": `Samples : Samples - ${samplesSubcustomer}`,
-              "Price Level": rc.priceLevel, "Status": orderStatus,
+              "Status": orderStatus,
               "Ship Date": "", "Cancel Date": "", "Must Arrive By Date": "",
               "Name": order.shipToName || "", "Attention": order.shipToAttention || "",
               "Address 1": order.shipToAddress1 || "", "Address 2": order.shipToAddress2 || "",
               "City": order.shipToCity || "", "State": order.shipToState || "",
               "Zip": order.shipToZip || "", "Country": order.shipToCountry || "US",
               "Ship Method": shipMethod, "Memo": order.memo || memo || "",
-              "External ID": externalId,
+              "Parent SKU": externalId,
             });
           });
         });
@@ -513,8 +540,8 @@ export default function App() {
 
       for (const { poData, distroData, distroId } of pairs) {
         const itemMatch = im?.length ? lookup(im, null, poData.sku) : null;
-        const nsSku = itemMatch ? String(itemMatch["Name"] || "").trim() : poData.sku || "";
-        const externalId = itemMatch ? String(itemMatch["External ID"] || "").trim() : poData.sku || "";
+        const nsSku = itemMatch ? String(itemMatch["Child SKU"] || "").trim() : poData.sku || "";
+        const externalId = itemMatch ? String(itemMatch["Parent SKU"] || "").trim() : poData.sku || "";
         if (!itemMatch && poData.sku) gnbUnmatched.push(poData.sku);
 
         const pairRows = (distroData.locations || []).filter(loc => (Number(loc.quantity)||0) > 0).map(loc => {
@@ -536,15 +563,15 @@ export default function App() {
           }
           return {
             "Order #": loc.quillPoNum || "", "NS SKU": nsSku, "Customer Part Number": distroData.quillSkuNum || "",
-            "Date": todayDate, "Quantity": qty, "Rate": rate, "Amount": parseFloat((qty * rate).toFixed(2)),
+            "Date": todayDate, "Quantity": qty, "Item Rate": rate, "Amount": parseFloat((qty * rate).toFixed(2)),
             "Is EDI Sent": rc.isEdiSent, "PO Number": loc.quillPoNum || "", "NS CUSTOMER": rc.nsCustomer,
-            "Price Level": rc.priceLevel, "Status": orderStatus,
+            "Status": orderStatus,
             "Ship Date": shipDate, "Cancel Date": shipDate, "Must Arrive By Date": mabd,
             "Name": loc.name || "", "Attention": "", "Address 1": loc.address1 || "", "Address 2": loc.address2 || "",
             "City": loc.city || "", "State": loc.state || "", "Zip": loc.zip || "", "Country": loc.country || "US",
             "Ship Method": resolvedMethod, "Freight Account #": resolvedAccount, "SCAC": resolvedScac,
             "Memo": `Shipping instructions for Quill order: SHIP FREIGHT COLLECT (PO ${poData.poNumber})${ltlNote}`,
-            "External ID": externalId, "_gnbPoNumber": String(poData.poNumber || ""), "_gnbCarrier": String(loc.shipMethod || ""),
+            "Parent SKU": externalId, "_gnbPoNumber": String(poData.poNumber || ""), "_gnbCarrier": String(loc.shipMethod || ""),
           };
         });
 
@@ -578,13 +605,14 @@ export default function App() {
         const isHyVee = rc.orderUnit === "cases";
         const isJungleJims = retailer === "Jungle Jims Market Inc";
         const isImperial = retailer === "Imperial Distributors Inc.";
+        const isTjmCan = retailer === "TJ Maxx Canada";
         const resp = await fetch("/api/anthropic/v1/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "claude-sonnet-4-6",
             max_tokens: 4096,
-            system: isHyVee ? HY_VEE_PROMPT : isJungleJims ? JJ_PROMPT : isImperial ? IMPERIAL_PROMPT : PROMPT,
+            system: isHyVee ? HY_VEE_PROMPT : isJungleJims ? JJ_PROMPT : isImperial ? IMPERIAL_PROMPT : isTjmCan ? TJM_CAN_PROMPT : PROMPT,
             messages: [{
               role: "user",
               content: [
@@ -613,6 +641,18 @@ export default function App() {
           jjMemo = [rc.defaultMemo, po.deliveryInstructions ? `Delivery Instructions: ${po.deliveryInstructions}` : ""].filter(Boolean).join(" ");
         }
 
+        let tjmShipDate = "", tjmCancelDate = "", tjmMabd = "", tjmMemo = "", tjmChainName = "", tjmDcAddress = {}, tjmDeptNo = "";
+        if (isTjmCan) {
+          const chainNameMap = { "HOMESENSE": "HomeSense", "WINNERS": "Winners", "MARSHALLS": "Marshalls" };
+          tjmChainName = chainNameMap[(po.chainName || "").toUpperCase()] || po.chainName || "";
+          tjmDeptNo = po.deptNo || "";
+          tjmDcAddress = TJM_DC_MAP[String(po.prefix || "")] || {};
+          tjmShipDate = fmtDate(po.shipDate);
+          tjmCancelDate = fmtDate(po.cancelDate);
+          tjmMabd = tjmCancelDate;
+          tjmMemo = `P.O. ${po.poNumber} Dpt. ${tjmDeptNo} - Deal # ${po.dealNumber} - Carton markings must include: Purchase Order Number including Purchase Order Prefix, Ship To Address and Ship From Address, Vendor Style Number, Department Number, Origin Country`;
+        }
+
         let newRows = [], unmatched = [], caseMismatches = [];
 
         for (const line of po.lineItems) {
@@ -621,9 +661,10 @@ export default function App() {
           if (isHyVee) {
             const upc11 = String(line.mfgNum || "").substring(0, 6) + String(line.prodNum || "").padStart(5, "0").substring(0, 5);
             const m = im?.length ? im.find(it => String(it["UPC Code"] || "").substring(0, 11) === upc11) : null;
+            rowCustomerPartNum = String(line.mfgNum || "");
             if (m) {
-              nsSku = String(m["Name"] || "").trim();
-              externalId = String(m["External ID"] || "").trim();
+              nsSku = String(m["Child SKU"] || "").trim();
+              externalId = String(m["Parent SKU"] || "").trim();
               const cp = parseInt(m["Casepack Outer"]) || 1;
               const pdfMasterPack = parseInt(line.masterPack) || 0;
               rowCaseMismatch = pdfMasterPack > 0 && pdfMasterPack !== cp;
@@ -643,8 +684,8 @@ export default function App() {
             const upc11 = String(line.upc || "").replace(/\D/g, "").substring(0, 11);
             const m = im?.length ? im.find(it => String(it["UPC Code"] || "").replace(/\D/g, "").substring(0, 11) === upc11) : null;
             if (m) {
-              nsSku = String(m["Name"] || "").trim();
-              externalId = String(m["External ID"] || "").trim();
+              nsSku = String(m["Child SKU"] || "").trim();
+              externalId = String(m["Parent SKU"] || "").trim();
             } else {
               const label = upc11 || line.description || "";
               unmatched.push(label);
@@ -658,8 +699,8 @@ export default function App() {
             const upc12 = String(line.gtin || "").replace(/\D/g, "").slice(-12);
             const m = im?.length ? lookup(im, upc12, line.vendorSku) : null;
             if (m) {
-              nsSku = String(m["Name"] || "").trim();
-              externalId = String(m["External ID"] || "").trim();
+              nsSku = String(m["Child SKU"] || "").trim();
+              externalId = String(m["Parent SKU"] || "").trim();
               const cp = parseInt(m["Casepack Outer"]) || 1;
               const pdfCsePck = parseInt(line.csePck) || 0;
               rowCaseMismatch = pdfCsePck > 0 && pdfCsePck !== cp;
@@ -675,12 +716,29 @@ export default function App() {
             qty = Number(line.quantity) || 0;
             rate = Number(line.unitPrice) || 0;
             rowCustomerPartNum = String(line.itemNum || "");
+          } else if (isTjmCan) {
+            const vendorStyle = String(line.vendorStyle || "").trim();
+            const m = im?.length ? (
+              im.find(it => String(it["Child SKU"] || "").trim().toUpperCase() === vendorStyle.toUpperCase()) ||
+              im.find(it => String(it["Parent SKU"] || "").trim().toUpperCase() === vendorStyle.toUpperCase())
+            ) : null;
+            if (m) {
+              nsSku = String(m["Child SKU"] || "").trim();
+              externalId = String(m["Parent SKU"] || "").trim();
+            } else {
+              unmatched.push(vendorStyle || line.description || "");
+              nsSku = vendorStyle;
+              externalId = "";
+            }
+            qty = Number(line.units) || 0;
+            rate = Number(line.unitCost) || 0;
+            rowCustomerPartNum = String(line.style || "");
           } else {
             if (im?.length) {
               const m = lookup(im, line.upc, line.vendorItemNum);
               if (m) {
-                nsSku = String(m["Name"] || "").trim();
-                externalId = String(m["External ID"] || "").trim() || line.vendorItemNum || "";
+                nsSku = String(m["Child SKU"] || "").trim();
+                externalId = String(m["Parent SKU"] || "").trim() || line.vendorItemNum || "";
               } else {
                 unmatched.push(line.vendorItemNum || line.upc || line.description);
                 nsSku = line.vendorItemNum || "";
@@ -692,29 +750,36 @@ export default function App() {
             }
             qty = Number(line.quantity) || 0;
             rate = Number(line.unitPrice) || 0;
+            rowCustomerPartNum = String(line.itemNum || "");
           }
 
           const rowMemo = isHyVee
             ? `PODate ${po.orderDate} RequestedShipDate ${shipDate} CancelDate ${cancelDate} MustArriveBy ${mabd}`
             : isJungleJims ? jjMemo
+            : isTjmCan ? tjmMemo
             : (memo || po.memo || "");
           const shipToName = po.shipToName || (isHyVee ? "HY-VEE, INC." : "");
           newRows.push({
             "Order #": po.poNumber, "NS SKU": nsSku, "Date": fmtDate(po.orderDate),
-            "Quantity": qty, "Rate": rate, "Amount": parseFloat((qty * rate).toFixed(2)),
+            "Quantity": qty, "Item Rate": rate, "Amount": parseFloat((qty * rate).toFixed(2)),
             "Is EDI Sent": rc.isEdiSent, "PO Number": po.poNumber, "NS CUSTOMER": rc.nsCustomer,
-            "Price Level": rc.priceLevel, "Status": orderStatus,
-            "Ship Date": isJungleJims ? jjShipDate : shipDate,
-            "Cancel Date": isJungleJims ? jjCancelDate : cancelDate,
-            "Must Arrive By Date": isJungleJims ? jjMabd : mabd,
-            "Name": shipToName, "Attention": po.shipToAttention || "",
-            "Address 1": po.shipToAddress1, "Address 2": po.shipToAddress2 || "",
-            "City": po.shipToCity, "State": po.shipToState, "Zip": po.shipToZip,
-            "Country": po.shipToCountry, "Ship Method": shipMethod, "Memo": rowMemo,
+            "Status": orderStatus,
+            "Ship Date": isTjmCan ? tjmShipDate : isJungleJims ? jjShipDate : shipDate,
+            "Cancel Date": isTjmCan ? tjmCancelDate : isJungleJims ? jjCancelDate : cancelDate,
+            "Must Arrive By Date": isTjmCan ? tjmMabd : isJungleJims ? jjMabd : mabd,
+            "Name": isTjmCan ? tjmChainName : shipToName,
+            "Attention": isTjmCan ? "" : (po.shipToAttention || ""),
+            "Address 1": isTjmCan ? (tjmDcAddress.address1 || "") : po.shipToAddress1,
+            "Address 2": isTjmCan ? "" : (po.shipToAddress2 || ""),
+            "City": isTjmCan ? (tjmDcAddress.city || "") : po.shipToCity,
+            "State": isTjmCan ? (tjmDcAddress.state || "") : po.shipToState,
+            "Zip": isTjmCan ? (tjmDcAddress.zip || "") : po.shipToZip,
+            "Country": isTjmCan ? "Canada" : po.shipToCountry,
+            "Ship Method": shipMethod, "Memo": rowMemo,
             "Customer Part Number": rowCustomerPartNum,
-            "Department": rowDepartment,
+            "Department Number": isTjmCan ? tjmDeptNo : rowDepartment,
             "Description": line.description || "",
-            "External ID": externalId,
+            "Parent SKU": externalId,
             "_caseMismatch": rowCaseMismatch,
           });
         }
@@ -743,6 +808,8 @@ export default function App() {
   const isGnbRetailer = rc.type === "gnb";
   const isJungleJimsRetailer = retailer === "Jungle Jims Market Inc";
   const isImperialRetailer = retailer === "Imperial Distributors Inc.";
+  const isTjmCanRetailer = retailer === "TJ Maxx Canada";
+  const isSamplesRetailer = retailer === "Samples";
   const activeCols = isGnbRetailer ? GNB_APPROVAL_COLS : APPROVAL_COLS;
   const amountColIdx = activeCols.findIndex(c => c.key === "amount");
   const effectiveRows = rows.map(r => ({
@@ -758,14 +825,17 @@ export default function App() {
     } : {}),
     "Status": r._poHasMismatch ? "Pending Approval" : orderStatus,
     "NS CUSTOMER": retailer === "Samples" && samplesSubcustomer ? `Samples : Samples - ${samplesSubcustomer}` : rc.nsCustomer,
-    "Price Level": rc.priceLevel,
-    "Is EDI Sent": rc.isEdiSent,
+       "Is EDI Sent": rc.isEdiSent,
     "Is Sample": rc.isSample,
-    ...(retailer === "Samples" ? { "Rate": 0, "Amount": 0 } : {}),
+    ...(retailer === "Samples" ? { "Item Rate": 0, "Amount": 0 } : {}),
     // GNB and JJ memos are auto-generated per row; don't override
-    ...(!isGnbRetailer && !isJungleJimsRetailer && memo ? { "Memo": memo } : {}),
+    ...(!isGnbRetailer && !isJungleJimsRetailer && !isTjmCanRetailer && memo ? { "Memo": memo } : {}),
+    "Item": r["Parent SKU"] ? `${r["Parent SKU"]} : ${r["NS SKU"]}` : r["NS SKU"] || "",
+    "Customer": retailer === "Samples" && samplesSubcustomer ? `Samples : Samples - ${samplesSubcustomer}` : rc.nsCustomer,
+    "Addressee": r["Name"] || "",
   }));
   const total = effectiveRows.reduce((s, r) => s + Number(r["Amount"]), 0);
+  const missingFields = (result && effectiveRows.length > 0) ? REQUIRED_FIELDS.filter(f => effectiveRows.some(r => !hasVal(r[f.key]))) : [];
   const queuedCount = pdfs.filter(p => p.status === "queued").length;
   const hasPdfs = pdfs.length > 0;
 
@@ -980,16 +1050,18 @@ export default function App() {
       )}
 
       {result&&(<>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:"1rem"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6,marginBottom:"1rem"}}>
+          <div style={S.stat}><div style={S.statLabel}>Unmatched SKUs</div><div style={{...S.statVal,color:result.allUnmatched.length?"var(--color-text-warning)":undefined}}>{result.allUnmatched.length||"None"}</div></div>
           <div style={S.stat}><div style={S.statLabel}>POs</div><div style={S.statVal}>{result.totalPOs}</div></div>
           <div style={S.stat}><div style={S.statLabel}>Lines</div><div style={S.statVal}>{effectiveRows.length}</div></div>
-          <div style={S.stat}><div style={S.statLabel}>Unmatched SKUs</div><div style={{...S.statVal,color:result.allUnmatched.length?"var(--color-text-warning)":undefined}}>{result.allUnmatched.length||"None"}</div></div>
+          <div style={S.stat}><div style={S.statLabel}>Total Units</div><div style={S.statVal}>{effectiveRows.reduce((s,r)=>s+(Number(r["Quantity"])||0),0).toLocaleString("en-US")}</div></div>
           <div style={S.stat}><div style={S.statLabel}>Total</div><div style={S.statVal}>${total.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
         </div>
 
         {result.skuMismatch&&<div style={S.msgWarn}><i className="ti ti-alert-triangle" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/><span><strong>SKU Mismatch:</strong> PO SKU ({result.skuMismatch.poSku}) does not match distro sheet Item # ({result.skuMismatch.distroItemNum}). Verify before importing.</span></div>}
         {result.allUnmatched?.length>0&&<div style={S.msgWarn}><i className="ti ti-alert-triangle" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/><span><strong>Unmatched:</strong> {result.allUnmatched.join(", ")} — vendor item # used as fallback</span></div>}
         {result.allCaseMismatches?.length>0&&<div style={S.msgWarn}><span><strong>⚠️ {result.allCaseMismatches.length>1?"Case Pack Mismatch Warnings":"Case Pack Mismatch Warning"}</strong><br/>{result.allCaseMismatches.map((m,i)=><span key={i}>{m}.<br/></span>)}<br/>{result.allCaseMismatches.length>1?"Contact buyer to get the POs revised to full case packs. The POs have been updated to Pending Approval pending the buyer's change.":"Contact buyer to get the PO revised to full case packs. The PO has been updated to Pending Approval pending the buyer's change."}</span></div>}
+        {missingFields.length>0&&<div style={S.msgWarn}><span><strong>⚠️ {missingFields.length>1?"Missing Required Fields":"Missing Required Field"}</strong><br/>{missingFields.map((f,i)=><span key={i}>{f.label} is missing. Field is required to successfully import.<br/></span>)}</span></div>}
         {!result.allUnmatched?.length&&im&&<div style={S.msgOk}><i className="ti ti-circle-check" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/>All items matched to item master</div>}
         {result.failedPOs>0&&<div style={S.msgErr}><i className="ti ti-alert-circle" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/>{result.failedPOs} PDF{result.failedPOs>1?"s":""} failed — see file list above for details</div>}
 
@@ -1062,7 +1134,7 @@ export default function App() {
           {(()=>{
             const _hideCols=new Set(rc.hideCols||[]);
             const _extraCols=(rc.showCols||{})[previewTab]||[];
-            const previewCols=[...(TABS_PREVIEW.find(t=>t.label===previewTab)?.cols||[]),..._extraCols].filter(h=>!_hideCols.has(h));
+            const previewCols=[...new Set([...(TABS_PREVIEW.find(t=>t.label===previewTab)?.cols||[]),..._extraCols])].filter(h=>!_hideCols.has(h)).filter(h=>effectiveRows.some(r=>hasVal(r[h])));
             return (
           <div style={{overflowX:"auto",overflowY:"auto",maxHeight:460,border:"0.5px solid var(--color-border-tertiary)",borderRadius:8}}>
             <table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -1098,10 +1170,33 @@ export default function App() {
           })()}
         </div>
 
-        <div style={{display:"flex",gap:10,justifyContent:"space-between"}}>
-          <button style={S.btnOutline} onClick={resetAll}><i className="ti ti-refresh" aria-hidden="true" style={{fontSize:15}}/>New batch</button>
-          <button style={S.btnSuccess} onClick={()=>dlCSV(isGnbRetailer?buildGnbCSV(effectiveRows):isJungleJimsRetailer?buildJjCSV(effectiveRows):isImperialRetailer?buildImperialCSV(effectiveRows):buildCSV(effectiveRows),`NS_${retailer.replace(/\s+/g,"_")}_${result.totalPOs}PO${result.totalPOs!==1?"s":""}.csv`)}><i className="ti ti-download" aria-hidden="true" style={{fontSize:15}}/>Download CSV</button>
-          <a href="https://4848284.app.netsuite.com/app/setup/assistants/nsimport/importassistant.nl?recid=206&new=T" target="_blank" rel="noreferrer" style={{...S.btnOutline,textDecoration:"none"}}><i className="ti ti-upload" aria-hidden="true" style={{fontSize:15}}/>Import CSV into NS</a>
+        {(() => {
+          const sageBtn = {display:"flex",alignItems:"center",gap:6,padding:"10px 18px",fontSize:14,fontWeight:500,fontFamily:"var(--font-sans)",border:"none",borderRadius:8,background:"#154406",color:"#fff",cursor:"pointer",textDecoration:"none"};
+          const cardStyle = {padding:"16px",background:"var(--color-background-secondary)",border:"1px solid var(--color-border-secondary)",borderRadius:10,display:"flex",flexDirection:"column",alignItems:"center",gap:10};
+          const titleStyle = {fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.07em",color:"var(--color-text-secondary)"};
+          return (
+            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+              {effectiveRows.some(r=>r["Customer Part Number"])&&(
+                <div style={cardStyle}>
+                  <span style={titleStyle}>Customer Part Numbers</span>
+                  <div style={{display:"flex",gap:6}}>
+                    <button style={sageBtn} onClick={()=>dlCSV(buildCpnCSV(effectiveRows),"Export Customer Part Numbers.csv")}><i className="ti ti-download" aria-hidden="true" style={{fontSize:15}}/>Download CSV</button>
+                    <a href={import.meta.env.DEV?"https://4848284-sb1.app.netsuite.com/app/setup/assistants/nsimport/importassistant.nl?recid=211&new=T":"https://4848284.app.netsuite.com/app/setup/assistants/nsimport/importassistant.nl?recid=215&new=T"} target="_blank" rel="noreferrer" style={sageBtn}><i className="ti ti-upload" aria-hidden="true" style={{fontSize:15}}/>Import CSV</a>
+                  </div>
+                </div>
+              )}
+              <div style={cardStyle}>
+                <span style={titleStyle}>Purchase Orders</span>
+                <div style={{display:"flex",gap:6}}>
+                  <button style={sageBtn} onClick={()=>dlCSV(isSamplesRetailer?buildSamplesCSV(effectiveRows):isGnbRetailer?buildGnbCSV(effectiveRows):isJungleJimsRetailer?buildJjCSV(effectiveRows):isImperialRetailer?buildImperialCSV(effectiveRows):isTjmCanRetailer?buildTjmCanCSV(effectiveRows):buildCSV(effectiveRows),`NS_${retailer.replace(/\s+/g,"_")}_${result.totalPOs}PO${result.totalPOs!==1?"s":""}.csv`)}><i className="ti ti-download" aria-hidden="true" style={{fontSize:15}}/>Download CSV</button>
+                  <a href={import.meta.env.DEV?"https://4848284-sb1.app.netsuite.com/app/setup/assistants/nsimport/importassistant.nl?recid=210&new=T":"https://4848284.app.netsuite.com/app/setup/assistants/nsimport/importassistant.nl?recid=206&new=T"} target="_blank" rel="noreferrer" style={sageBtn}><i className="ti ti-upload" aria-hidden="true" style={{fontSize:15}}/>Import CSV</a>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+        <div style={{display:"flex",justifyContent:"center",marginTop:10}}>
+          <button style={S.btnOutline} onClick={resetAll}><i className="ti ti-refresh" aria-hidden="true" style={{fontSize:15}}/>Clear All Fields</button>
         </div>
       </>)}
       </>}

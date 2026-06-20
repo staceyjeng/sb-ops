@@ -96,8 +96,8 @@ function netsuitePlugin(env) {
         try {
           const records = await fetchItemMaster(env);
           const items = records.map(r => ({
-            'Name': r.itemId || String(r.id),
-            'External ID': r.externalId || '',
+            'Child SKU': r.itemId || String(r.id),
+            'Parent SKU': r.externalId || '',
             'UPC Code': r.upcCode || '',
           }));
           console.log(`[NS] Item master loaded: ${items.length} items`);
