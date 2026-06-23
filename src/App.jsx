@@ -1,30 +1,37 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import * as XLSX from "xlsx";
+import { useState, useRef, useCallback, useEffect, Fragment } from "react";
 import JSZip from "jszip";
 
 const RETAILERS = {
   "BJ's Wholesale Club": { nsCustomer: "BJs Wholesale Corporate : BJs Wholesale", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No" },
-  "Cost Plus World Market": { nsCustomer: "Cost Plus World Market", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
-  "Gilt": { nsCustomer: "Gilt", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
+  "Canadian Tire Corporation": { nsCustomer: "Canadian Tire Corporation", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import", dev: true },
+  "Cost Plus World Market": { nsCustomer: "Cost Plus World Market", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No" },
+  "Costco CAN": { nsCustomer: "Costco CAN", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import", dev: true },
+  "Costco MX": { nsCustomer: "Costco MX", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import", dev: true },
+  "Dollar General Direct Import": { nsCustomer: "Dollar General Direct Import", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import", dev: true },
+  "Gilt": { nsCustomer: "Gilt", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultMemo: "Email inboundtrans@ruelala.com or call (502) 281-4419 for routing instructions before shipping the order" },
   "Global New Beginnings": { nsCustomer: "Global New Beginnings Inc.", shipMethod: "Collect", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", type: "gnb" },
+  "Home Hardware": { nsCustomer: "Home Hardware", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import", dev: true },
   "Hy-Vee": { nsCustomer: "Hy-Vee", shipMethod: "ROUTEPPD", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", orderUnit: "cases" },
   "Imperial Distributors Inc.": { nsCustomer: "Imperial Distributors Inc.", shipMethod: "ROUTEPPD", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultMemo: "Frgt Terms :$1000 Prepaid", hideCols: ["Freight Account #","SCAC"] },
   "Jungle Jims Market Inc": { nsCustomer: "Jungle Jims Market Inc", shipMethod: "UPS Ground", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultMemo: "Packing slip or invoice must be on the outside of the package, with the department specified. Jungle Jim's does not accept shipments from UPS freight. UPS Ground is Fine.", hideCols: ["Customer Part Number","Freight Account #","SCAC"], showCols: {"Items": ["Department Number"]} },
   "Mark-It Smart Inc.": { nsCustomer: "Mark-It Smart Inc.", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No" },
-  "Samples": { nsCustomer: "Samples", shipMethod: "DPP", status: "Pending Fulfillment", isEdiSent: "No", isSample: "Yes", dev: true },
-  "Sur La Table": { nsCustomer: "Sur La Table", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
+  "PriceSmart Inc.": { nsCustomer: "PriceSmart Inc.", shipMethod: "", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import", dev: true },
+  "Samples": { nsCustomer: "Samples", shipMethod: "DPP", status: "Pending Fulfillment", isEdiSent: "No", isSample: "Yes", dev: true, showCols: {"Items": ["Is Sample"]} },
+  "Sur La Table": { nsCustomer: "Sur La Table", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultMemo: "Remove MABD from BOL to avoid chargeback" },
   "TJ Maxx Canada": { nsCustomer: "T.J. Maxx Corporate : T.J. Maxx - Canada", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No" },
-  "Verdi Commerce LLC": { nsCustomer: "Verdi Commerce LLC", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
+  "Verdi Commerce LLC": { nsCustomer: "Verdi Commerce LLC", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultMemo: "Please use the the will call form" },
+  "Walmart Canada": { nsCustomer: "Walmart Canada", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import", dev: true },
   "Walmart Marketplace": { nsCustomer: "Walmart Corporate : Walmart Marketplace", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", dev: true },
+  "Walmart US DI": { nsCustomer: "Walmart US DI", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import", dev: true },
 };
 const SHIP_METHODS = ["Collect","DPP","FedEx 2Day","FedEx Ground","FedEx Home Delivery","FedEx International Econ","FedEx SmartPost","Fedex Standard Overnight","Route","ROUTEPPD","UPS 2-Day","UPS 3-Day","UPS Express Saver","UPS Ground","UPS Overnight","UPS Surepost","USPS","USPS Ground Advantage"];
 const STATUSES = ["Pending Fulfillment","Pending Approval"];
-const CSV_HEADERS = ["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
-const SAMPLES_CSV_HEADERS = ["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Is Sample","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
+const CSV_HEADERS = ["Date","PO Number","Customer","Status","Location","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo","Item","Customer Part Number","Quantity","Item Rate","Amount"];
+const SAMPLES_CSV_HEADERS = ["Date","PO Number","Customer","Status","Location","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo","Item","Customer Part Number","Quantity","Item Rate","Amount","Is Sample"];
 const IM_KEY = "item-master-data";
 const TABS_PREVIEW = [
-  { label: "Header", cols: ["Date","PO Number","Customer","Status","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Freight Account #","SCAC","Memo"] },
-  { label: "Items", cols: ["Item","Customer Part Number","Quantity","Item Rate","Amount","Department Number","Is Sample"] },
+  { label: "Header", cols: ["Date","PO Number","Customer","Status","Location","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Freight Account #","SCAC","Memo"] },
+  { label: "Items", cols: ["Item","Customer Part Number","Quantity","Item Rate","Amount","Department Number"] },
 ];
 const REQUIRED_FIELDS = [
   {label:"Date",key:"Date"},{label:"PO Number",key:"PO Number"},{label:"Name",key:"Customer"},
@@ -42,16 +49,36 @@ function hasVal(v){return v!=null&&String(v).trim()!=="";}
 function buildFilteredCSV(headers,rows){const active=headers.filter(h=>rows.some(r=>hasVal(r[h])));return[active.join(","),...rows.map(r=>active.map(h=>esc(r[h])).join(","))].join("\n");}
 function buildCSV(rows){return buildFilteredCSV(CSV_HEADERS,rows);}
 function buildSamplesCSV(rows){return buildFilteredCSV(SAMPLES_CSV_HEADERS,rows);}
-const GNB_CSV_HEADERS=["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Freight Account #","SCAC","Memo"];
+const GNB_CSV_HEADERS=["Date","PO Number","Customer","Status","Location","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Freight Account #","SCAC","Memo","Item","Customer Part Number","Quantity","Item Rate","Amount"];
 function buildGnbCSV(rows){return buildFilteredCSV(GNB_CSV_HEADERS,rows);}
-const IMPERIAL_CSV_HEADERS=["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo"];
+const IMPERIAL_CSV_HEADERS=["Date","PO Number","Customer","Status","Location","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo","Item","Customer Part Number","Quantity","Item Rate","Amount"];
 function buildImperialCSV(rows){return buildFilteredCSV(IMPERIAL_CSV_HEADERS,rows);}
-const JJ_CSV_HEADERS=["Date","PO Number","Customer","Status","Item","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Department Number","Memo"];
+const JJ_CSV_HEADERS=["Date","PO Number","Customer","Status","Location","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo","Item","Quantity","Item Rate","Amount","Department Number"];
 function buildJjCSV(rows){return buildFilteredCSV(JJ_CSV_HEADERS,rows);}
-const TJM_CAN_CSV_HEADERS=["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Department Number","Memo"];
-function buildTjmCanCSV(rows){return[TJM_CAN_CSV_HEADERS.join(","),...rows.map(r=>[r["Date"]||"",r["PO Number"]||"",r["Customer"]||"",r["Status"]||"",r["Item"]||"",r["Customer Part Number"]||"",r["Quantity"]??"",r["Item Rate"]??"",r["Amount"]??"",r["Ship Date"]||"",r["Cancel Date"]||"",r["Must Arrive By Date"]||"",r["Addressee"]||"",r["Attention"]||"",r["Address 1"]||"",r["Address 2"]||"",r["City"]||"",r["State"]||"",r["Zip"]||"",r["Country"]||"",r["Ship Method"]||"",r["Department Number"]||"",r["Memo"]||""].map(v=>esc(v)).join(","))].join("\n");}
+const TJM_CAN_CSV_HEADERS=["Date","PO Number","Customer","Status","Location","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo","Item","Customer Part Number","Quantity","Item Rate","Amount","Department Number"];
+function buildTjmCanCSV(rows){return buildFilteredCSV(TJM_CAN_CSV_HEADERS,rows);}
 function buildCpnCSV(rows){const seen=new Set();const lines=[["Customer","Item","Name"]];for(const r of rows){const cpn=String(r["Customer Part Number"]||"").trim();const childSku=String(r["NS SKU"]||"").trim();const parentSku=String(r["Parent SKU"]||"").trim();if(!cpn||!childSku)continue;const item=parentSku?`${parentSku} : ${childSku}`:childSku;const customer=String(r["Customer"]||"").trim();const key=`${customer}|${item}|${cpn}`;if(seen.has(key))continue;seen.add(key);lines.push([customer,item,cpn]);}return lines.map(row=>row.map(v=>esc(v)).join(",")).join("\n");}
 function fmtDate(d){if(!d)return d;const p=String(d).split("/");if(p.length===3&&p[2].length===2){const y=parseInt(p[2],10);p[2]=y<=49?`20${p[2].padStart(2,"0")}`:`19${p[2].padStart(2,"0")}`;}return p.join("/");}
+function friendlyError(e) {
+  const msg = String(e?.message || e || "");
+  if (msg.includes("401") || msg.toLowerCase().includes("authentication") || msg.toLowerCase().includes("api key"))
+    return "API key error — check your Anthropic API key in the .env file.";
+  if (msg.includes("429") || msg.toLowerCase().includes("rate limit"))
+    return "Rate limit reached — wait a moment and try again.";
+  if (msg.includes("529") || msg.toLowerCase().includes("overloaded"))
+    return "Claude is overloaded right now — try again in a few seconds.";
+  if (msg.includes("413") || msg.toLowerCase().includes("too large"))
+    return "PDF is too large to process — try splitting it into smaller files.";
+  if (msg.toLowerCase().includes("syntaxerror") || msg.toLowerCase().includes("json") || msg.toLowerCase().includes("unexpected token"))
+    return "Claude returned unexpected output — the PDF may be image-based, password-protected, or in an unsupported format.";
+  if (msg.toLowerCase().includes("no text") || msg.toLowerCase().includes("empty response"))
+    return "No response from Claude — check your API key and network connection.";
+  if (msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("networkerror") || msg.toLowerCase().includes("timeout"))
+    return "Network error — check your internet connection and try again.";
+  if (msg.includes("500") || msg.includes("502") || msg.includes("503"))
+    return "Server error from the API — try again in a moment.";
+  return msg || "Unknown error — try re-uploading the PDF.";
+}
 function dlCSV(content,name){const b=new Blob(["﻿"+content],{type:"text/csv;charset=utf-8;"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
 function isoToMDY(iso){if(!iso)return "";const[y,m,d]=iso.split("-");return `${parseInt(m)}/${parseInt(d)}/${y}`;}
 function localISODate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
@@ -70,6 +97,16 @@ const JJ_PROMPT=`Extract data from this Jungle Jim's purchase order PDF. Return 
 const SAMPLES_PROMPT=`Parse this sample request message from an employee. It may contain one or more separate orders (each going to a distinct shipping address). Return ONLY valid JSON, no markdown, no explanation.\n\n{"orders":[{"lineItems":[{"sku":"exact SKU string as written","quantity":0}],"shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":""}]}\n\nRules:\n- Each distinct shipping address = one order object.\n- sku = the product code exactly as written (e.g. DMW10008, DCAF26CMGBCM02). Strip product descriptions; keep only the code.\n- quantity = integer. "1x of each" or "1x" before a list = 1 for every item. Parse the number before "x" as the quantity.\n- shipToAttention = name from "Attn:", "ATTN:", or similar label; empty string if none.\n- shipToAddress2 = suite, floor, door, unit, building — any secondary address line; empty string if none.\n- shipToCountry = 2-letter ISO: "US" for USA, "CA" for Canada.\n- memo = any extra delivery notes (door numbers, division, line review, room numbers, deal numbers, etc.) not captured in other fields; empty string if none.\n- ONLY JSON.`;
 
 const GNB_PROMPT=`This is a Global New Beginnings (GNBI) document. Identify its type and extract accordingly. Return ONLY valid JSON, no markdown, no explanation.\n\nIf this is a PURCHASE ORDER (has "PURCHASE ORDER" heading, a PO # field, and SKU line items with unit cost):\n{"docType":"po","poNumber":"number only e.g. 3320","orderDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","sku":"exact SKU string e.g. RSMS150GBRR24","unitCost":0.0000}\n\nIf this is a DISTRIBUTION SHEET (table of fulfillment center rows with a Quill P.O. # column and ship-to addresses):\n{"docType":"distro","gnbiPoNumber":"","itemNum":"Item # value e.g. RSMS150GBRR24","quillSkuNum":"Quill SKU # value e.g. 3171196","primaryShipDate":"MM/DD/YYYY","locations":[{"quillPoNum":"e.g. XSYI66-1","name":"full center name e.g. Quill Fulfillment Center #472","address1":"street address line 1","address2":"street address line 2 if present else empty","city":"","state":"2-letter","zip":"","country":"US","quantity":0,"shipMethod":"exact carrier name as shown on the sheet e.g. Fed Ex Ground, UPS Ground, T-Force, Roadrunner","scac":"SCAC code(s) exactly as shown e.g. RDFS or UPGF/TFIN; empty string if not shown","shipDate":"MM/DD/YYYY"}]}\n\nDistro rules: exclude rows where quantity=0. shipMethod=the exact carrier name from the sheet — do NOT normalize or replace unknown carriers with Fed Ex Ground or UPS Ground. scac=the raw SCAC string as printed (may contain slashes for multiple codes); empty string if absent. shipDate=the "Latest Acceptable Ship Date" for that row; if blank use primaryShipDate. ONLY JSON.`;
+
+const SLT_PROMPT=`Extract data from this Sur La Table purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"YYYY-MM-DD","shipDate":"YYYY-MM-DD","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"","lineItems":[{"style":"","sku":"","quantity":0,"unitCost":0.00}]}\n\nRules:\n- poNumber=PURCHASE ORDER number exactly as printed (with leading zeros, e.g. 0001688975).\n- orderDate=ORDER DATE in YYYY-MM-DD.\n- shipDate=BEGIN SHIP DATE in YYYY-MM-DD.\n- Ship-to block: first line=shipToName, second line=shipToAttention (e.g. EAGLEPOINT BUSINESS PARK), remaining lines=street address.\n- shipToAddress1=street address line (e.g. 901 E NORTHFIELD DR). If the street line contains a unit/suite/# (e.g. #200), split it: street goes in shipToAddress1, unit goes in shipToAddress2.\n- shipToAddress2=unit, suite, or # portion of the street address; empty string if none.\n- shipToState=2-letter abbreviation. shipToCountry=full country name as printed.\n- lineItems: style=STYLE column value (e.g. DEC012WH). sku=SKU column value exactly as printed with leading zeros (e.g. 0008975526). quantity=QTY integer. unitCost=COST decimal.\n- Extract ALL line items.\n- ONLY JSON.`;
+
+const VERDI_PROMPT=`Extract data from this Verdi Commerce purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"full country name e.g. United States","lineItems":[{"childSku":"","quantity":0,"unitCost":0.00}]}\n\nRules:\n- poNumber=PO # field.\n- orderDate=Date field in MM/DD/YYYY.\n- shipDate=Ship Date field in MM/DD/YYYY.\n- Ship To block: first line=shipToName (e.g. "PO 4911817-99"), second line=shipToAttention (company name, e.g. "Theisen Supply Inc"), third line=shipToAddress1 (street address). shipToAddress2="" if not present.\n- shipToCountry=full country name (United States, not US).\n- lineItems: childSku=Item column value with all spaces and line breaks removed (e.g. "DEG200GBB K01" or "DEG200GBB\\nK01" → "DEG200GBBK01"). quantity=Quantity integer. unitCost=Rate decimal.\n- Extract ALL line items.\n- ONLY JSON.`;
+
+const PRICESMART_PROMPT=`Extract data from this PriceSmart Inc. purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YY","shipDate":"MM/DD/YY","revisedDate":"MM/DD/YY","deliveryDate":"MM/DD/YY","shipToName":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"","shipToZip":"","shipToCountry":"full country name e.g. China","memo":"","lineItems":[{"itemNo":"","vendorStyle":"","quantity":0,"unitCost":0.00}]}\n\nRules:\n- poNumber=P.O NUMBER field.\n- orderDate=ORDER DATE in MM/DD/YY.\n- shipDate=SHIP DATE or SHIP NOT BEFORE in MM/DD/YY if explicitly on PO, else "".\n- revisedDate=REVISED DATE in MM/DD/YY (used as cancel date). If absent, use SHIP NOT AFTER.\n- deliveryDate=DELIVERY DATE in MM/DD/YY if present, else "".\n- Ship To block: shipToName=first line (e.g. "APL Logistics o/b PriceSmart, Inc. 2094"). shipToAddress1=first street/building line. shipToAddress2=second address line if present (e.g. park or district). shipToState="" if not present. shipToCountry=full name (CN → China, US → United States).\n- memo=full text of the notes/remarks block (the "!! SHIP TO DC..." section), preserving newlines as \\n.\n- lineItems: itemNo=ITEM NO. column integer as string. vendorStyle=the Dash product style code in the DESCRIPTION (e.g. "DSSP50008-D" — a code like letters+numbers+optional hyphen+letter, may be on a continuation line). quantity=ORDERED integer. unitCost=UNIT COST decimal.\n- Extract ALL line items.\n- ONLY JSON.`;
+
+const WORLD_MARKET_PROMPT=`Extract data from this Cost Plus World Market purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","cancelDate":"MM/DD/YYYY","mabd":"MM/DD/YYYY","shipToName":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"full country name e.g. United States","lineItems":[{"skuNumber":"","vendorStyle":"","quantity":0,"shipPackQty":0,"unitCost":0.00}]}\n\nRules:\n- poNumber=PURCHASE ORDER NUMBER field.\n- orderDate=CREATE DATE in MM/DD/YYYY.\n- shipDate=SHIP WINDOW START DATE in MM/DD/YYYY.\n- cancelDate=SHIP / CANCEL DATE in MM/DD/YYYY.\n- mabd=CURRENT EST. RECEIPT DATE in MM/DD/YYYY.\n- shipToName=Name on the first line of the SHIP TO block (e.g. "World Market #901 Stockton DC").\n- Address parsing: after the name line, count the lines before the CITY STATE ZIP line. If 2 lines: shipToAddress1=line1, shipToAddress2="". If 3 lines: the middle line is a park/building name followed by a street number (e.g. "SHIRLEY HOLLAND INDUSTRIAL PAR 12300") — shipToAddress1=[street number from that line] + [third line street name] (e.g. "12300 DOMINION WAY"), shipToAddress2=[park/building name only] (e.g. "SHIRLEY HOLLAND INDUSTRIAL PAR").\n- shipToCountry=full country name (US → United States).\n- lineItems: skuNumber=SKU # column. vendorStyle=VENDOR STYLE column. quantity=ORDERED QTY integer. shipPackQty=SHIP PACK QTY integer. unitCost=UNIT COST decimal (strip "$").\n- Extract ALL line items.\n- ONLY JSON.`;
+
+const GILT_PROMPT=`Extract data from this Gilt / Rue Gilt Groupe purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","cancelDate":"MM/DD/YYYY","shipToName":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"full country name e.g. United States","lineItems":[{"vendorSku":"","rcSku":"","quantity":0,"unitCost":0.00}]}\n\nRules:\n- poNumber=PO Number from the header.\n- orderDate=Order Date in MM/DD/YYYY.\n- shipDate=Ship Date in MM/DD/YYYY.\n- cancelDate=Cancel Date in MM/DD/YYYY.\n- shipToName=Name from the Ship To block (e.g. Rue Gilt Groupe).\n- lineItems: vendorSku=Vendor SKU column value exactly as printed. rcSku=RC SKU column value with all spaces and line breaks removed (e.g. "3050013084000 0" → "30500130840000"). quantity=Qty column integer. unitCost=Cost column decimal (strip "$").\n- Extract ALL line items.\n- ONLY JSON.`;
 
 const TJM_DC_MAP = {
   "10": { address1: "55 West Drive", city: "Brampton", state: "ON", zip: "L6T 4A1" },
@@ -111,6 +148,16 @@ const S = {
 };
 
 export default function App() {
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") === "dark");
+  const [rowOverrides, setRowOverrides] = useState([]);
+  const [retailerOverrides, setRetailerOverrides] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("retailer-defaults") || "{}"); } catch { return {}; }
+  });
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode);
+    localStorage.setItem("theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
+
   const [retailer, setRetailer] = useState("");
   const [shipMethod, setShipMethod] = useState("Route");
   const [orderStatus, setOrderStatus] = useState("Pending Fulfillment");
@@ -129,11 +176,9 @@ export default function App() {
   const [busyMsg, setBusyMsg] = useState("");
   const [result, setResult] = useState(null);
   const [rows, setRows] = useState([]);
-  const [previewTab, setPreviewTab] = useState("Header");
+  const [showHdrCols, setShowHdrCols] = useState(true);
   const [err, setErr] = useState("");
   const [settingsTab, setSettingsTab] = useState("main");
-  const [approval, setApproval] = useState(null);
-  const [approvalOrderIdx, setApprovalOrderIdx] = useState(0);
   const pdfRef = useRef();
   const imRef = useRef();
 
@@ -163,7 +208,7 @@ export default function App() {
     const reader=new FileReader();
     reader.onload=(e)=>{
       const parsed=parseImCsv(e.target.result);
-      const items=parsed.map(r=>({'Child SKU':r['Child SKU']||'','Parent SKU':r['Parent SKU']||'','UPC Code':r['UPC Code']||'','Casepack Outer':r['Casepack Outer']||''})).filter(r=>r['Child SKU']);
+      const items=parsed.map(r=>({'Child SKU':r['Child SKU']||'','Parent SKU':r['Parent SKU']||'','UPC Code':r['UPC Code']||'','Casepack Outer':r['Casepack Outer']||'','Description':r['Description']||''})).filter(r=>r['Child SKU']);
       if(!items.length){setImSource("Error: no valid items found");return;}
       setIm(items);
       setImSource(`CSV · ${items.length} items · cached ${new Date().toLocaleDateString()}`);
@@ -187,11 +232,8 @@ export default function App() {
     return null;
   },[]);
 
-  const handleRetailer=(r)=>{if(r!==retailer){resetAll();setSamplesSubcustomer("");}setRetailer(r);if(RETAILERS[r]){setShipMethod(RETAILERS[r].shipMethod);setOrderStatus(RETAILERS[r].status);setMemo(RETAILERS[r].defaultMemo||"");}};
+  const handleRetailer=(r)=>{if(r!==retailer){resetAll();setSamplesSubcustomer("");}setRetailer(r);if(RETAILERS[r]){const saved=retailerOverrides[r];setShipMethod(saved?.shipMethod??RETAILERS[r].shipMethod);setOrderStatus(saved?.status??RETAILERS[r].status);setMemo(saved?.memo!==undefined?saved.memo:(RETAILERS[r].defaultMemo||""));}};
 
-  useEffect(() => {
-    if (result && rows.length) initApproval(rows, retailer, shipMethod, memo, orderStatus);
-  }, [orderStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addPDFs = (files) => {
     if (!files?.length) return;
@@ -253,162 +295,25 @@ export default function App() {
     } catch(e) { console.error('loadTestPDFs:', e); }
   };
 
+  const activeDefaults = retailer && RETAILERS[retailer] ? (() => {
+    const saved=retailerOverrides[retailer]; const rc=RETAILERS[retailer];
+    return {shipMethod:saved?.shipMethod??rc.shipMethod, status:saved?.status??rc.status, memo:saved?.memo!==undefined?saved.memo:(rc.defaultMemo||"")};
+  })() : null;
+  const settingsChanged = !!(activeDefaults && (shipMethod!==activeDefaults.shipMethod||orderStatus!==activeDefaults.status||memo!==activeDefaults.memo));
+
+  const saveRetailerDefaults = () => {
+    const updated={...retailerOverrides,[retailer]:{shipMethod,status:orderStatus,memo}};
+    setRetailerOverrides(updated);
+    localStorage.setItem("retailer-defaults",JSON.stringify(updated));
+  };
+
   const resetAll = () => {
-    const defaultMemo = RETAILERS[retailer]?.defaultMemo || "";
-    setPdfs([]); setResult(null); setRows([]); setErr(""); setBusy(false); setBusyMsg(""); setApproval(null); setApprovalOrderIdx(0); setMemo(defaultMemo); setGnbDate(localISODate()); setGnbUpsAccount("8V4012"); setGnbFedexAccount("704499884"); setSamplesSubcustomer(""); setSamplesText("");
+    const saved=retailerOverrides[retailer];const rc=RETAILERS[retailer]||{};
+    const defaultMemo=saved?.memo!==undefined?saved.memo:(rc.defaultMemo||"");
+    setPdfs([]); setResult(null); setRows([]); setRowOverrides([]); setErr(""); setBusy(false); setBusyMsg(""); setMemo(defaultMemo); setGnbDate(localISODate()); setGnbUpsAccount("8V4012"); setGnbFedexAccount("704499884"); setSamplesSubcustomer(""); setSamplesText("");
     if (pdfRef.current) pdfRef.current.value = "";
   };
 
-  const APPROVAL_COLS = [
-    {key:"lineId",label:"Line ID",w:60},
-    {key:"date",label:"Date",w:100},
-    {key:"orderNum",label:"Order #",w:100},
-    {key:"poNumber",label:"PO/Check #",w:110},
-    {key:"status",label:"Status",w:130},
-    {key:"name",label:"Customer",w:220},
-    {key:"externalId",label:"Parent SKU",w:110},
-    {key:"description",label:"Description",w:190},
-    {key:"quantity",label:"Qty",w:70},
-    {key:"rate",label:"Item Rate",w:80},
-    {key:"amount",label:"Amount",w:90},
-    {key:"shipDate",label:"Ship Date",w:100},
-    {key:"cancelDate",label:"Cancel Date",w:100},
-    {key:"mabd",label:"MABD",w:100},
-    {key:"shipAddressee",label:"Ship To",w:190},
-    {key:"shipAddr1",label:"Address 1",w:160},
-    {key:"shipAddr2",label:"Address 2",w:120},
-    {key:"shipCity",label:"City",w:110},
-    {key:"shipState",label:"State",w:60},
-    {key:"shipZip",label:"Zip",w:90},
-  ];
-
-  const GNB_APPROVAL_COLS = [
-    {key:"lineId",label:"Line ID",w:55},
-    {key:"date",label:"Date",w:95},
-    {key:"orderNum",label:"Quill PO #",w:110},
-    {key:"status",label:"Status",w:130},
-    {key:"nsSku",label:"NS SKU",w:190},
-    {key:"quantity",label:"Qty",w:65},
-    {key:"rate",label:"Item Rate",w:75},
-    {key:"amount",label:"Amount",w:85},
-    {key:"shipDate",label:"Ship Date",w:95},
-    {key:"cancelDate",label:"Cancel Date",w:95},
-    {key:"mabd",label:"MABD",w:95},
-    {key:"shipAddressee",label:"Ship To",w:200},
-    {key:"shipAddr1",label:"Address 1",w:160},
-    {key:"shipCity",label:"City",w:110},
-    {key:"shipState",label:"State",w:55},
-    {key:"shipZip",label:"Zip",w:80},
-    {key:"shipMethod",label:"Ship Method",w:110},
-    {key:"freightAccount",label:"Freight Acct #",w:110},
-    {key:"scac",label:"SCAC",w:65},
-  ];
-
-  const initApproval = useCallback((allRows, curRetailer, curShipMethod, curMemo, curOrderStatus) => {
-    const hasMismatchRows = allRows.some(r => r._poHasMismatch);
-    const isGnb = RETAILERS[curRetailer]?.type === "gnb";
-    if ((curOrderStatus !== "Pending Approval" && !hasMismatchRows) || !allRows.length) { setApproval(null); return; }
-    const rc = RETAILERS[curRetailer];
-    // GNB: group all rows under the blanket PO #; others: group by Quill/individual PO #
-    const orderMap = new Map();
-    allRows.forEach(r => {
-      const po = isGnb ? (r["_gnbPoNumber"] || "GNB Order") : (r["PO Number"] || r["Order #"] || "Unknown");
-      if (!orderMap.has(po)) orderMap.set(po, []);
-      orderMap.get(po).push(r);
-    });
-    const orders = Array.from(orderMap.entries()).map(([poNumber, poRows]) => ({
-      poNumber,
-      lines: poRows.map((r, idx) => ({
-        internalId: "TBD",
-        lineId: idx + 1,
-        date: r["Date"] || "",
-        orderNum: r["Order #"] || "",
-        poNumber: r["PO Number"] || "",
-        status: r._poHasMismatch ? "Pending Approval" : curOrderStatus,
-        name: r["NS CUSTOMER"] || rc?.nsCustomer || "",
-        externalId: r["Parent SKU"] || "",
-        description: r["Description"] || "",
-        nsSku: r["NS SKU"] || "",
-        quantity: r["Quantity"] ?? 0,
-        rate: r["Item Rate"] ?? 0,
-        amount: r["Amount"] ?? 0,
-        shipDate: r["Ship Date"] || "",
-        cancelDate: r["Cancel Date"] || "",
-        mabd: r["Must Arrive By Date"] || "",
-        lineStatus: "Pending Fulfillment",
-        shipAddressee: r["Name"] || "",
-        shipAddr1: r["Address 1"] || "",
-        shipAddr2: r["Address 2"] || "",
-        shipCity: r["City"] || "",
-        shipState: r["State"] || "",
-        shipZip: r["Zip"] || "",
-        shipMethod: r["Ship Method"] || "",
-        freightAccount: r["Freight Account #"] || "",
-        scac: r["SCAC"] || "",
-        caseMismatch: !!r["_caseMismatch"],
-      })),
-    }));
-    setApproval({ orders });
-    setApprovalOrderIdx(0);
-  }, []);
-
-  const updateApprovalLine = (orderIdx, lineIdx, field, val) => {
-    setApproval(prev => {
-      const orders = prev.orders.map((o, oi) => {
-        if (oi !== orderIdx) return o;
-        const lines = o.lines.map((l, li) => {
-          if (li !== lineIdx) return l;
-          const updated = { ...l, [field]: val };
-          if (field === "quantity" || field === "rate") {
-            const q = parseFloat(field === "quantity" ? val : l.quantity) || 0;
-            const r = parseFloat(field === "rate" ? val : l.rate) || 0;
-            updated.amount = parseFloat((q * r).toFixed(2));
-          }
-          return updated;
-        });
-        return { ...o, lines };
-      });
-      return { ...prev, orders };
-    });
-  };
-
-  const exportApprovalXLSX = () => {
-    if (!approval) return;
-    const poNums = approval.orders.map(o => o.poNumber).join("_");
-    const allLines = approval.orders.flatMap(o => o.lines);
-    if (RETAILERS[retailer]?.type === "gnb") {
-      const headers = ["Date","Quill PO #","Status","NS SKU","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Ship To","Address 1","City","State","Zip","Ship Method","Freight Account #","SCAC"];
-      const data = [headers, ...allLines.map(l => [
-        l.date, l.orderNum, l.status, l.nsSku,
-        parseFloat(l.quantity)||0, parseFloat(l.rate)||0, parseFloat(l.amount)||0,
-        l.shipDate, l.cancelDate, l.mabd,
-        l.shipAddressee, l.shipAddr1, l.shipCity, l.shipState, l.shipZip,
-        l.shipMethod, l.freightAccount, l.scac
-      ])];
-      const ws = XLSX.utils.aoa_to_sheet(data);
-      ws["!cols"] = [12,14,16,22,10,10,12,12,12,16,28,26,14,8,10,14,14,8].map(wch=>({wch}));
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "GNB Order Review");
-      XLSX.writeFile(wb, `GNB_PO${poNums}_Review.xlsx`);
-      return;
-    }
-    const headers = ["Date","Order #","PO/Check Number","Status","Name","Parent SKU","Description","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Status","Shipping Addressee","Shipping Address 1","Shipping Address 2","Shipping City","Shipping State/Province","Shipping Zip"];
-    const data = [
-      headers,
-      ...allLines.map(l => [
-        l.date, l.orderNum, l.poNumber,
-        l.status, l.name, l.externalId, l.description,
-        parseFloat(l.quantity)||0, parseFloat(l.rate)||0, parseFloat(l.amount)||0,
-        l.shipDate, l.cancelDate, l.mabd, l.lineStatus,
-        l.shipAddressee, l.shipAddr1, l.shipAddr2, l.shipCity, l.shipState, l.shipZip
-      ])
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    ws["!cols"] = [12,12,16,16,35,16,28,10,10,12,12,12,16,16,28,28,15,15,10,12].map(wch=>({wch}));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Approval");
-    XLSX.writeFile(wb, `${poNums.replace(/[^a-zA-Z0-9_]/g,"_")}_Approval.xlsx`);
-  };
 
   const process = async () => {
     setErr(""); setBusy(true);
@@ -438,7 +343,7 @@ export default function App() {
           (order.lineItems || []).forEach(line => {
             const m = im?.length ? lookup(im, null, line.sku) : null;
             const nsSku = m ? String(m["Child SKU"] || "").trim() : line.sku || "";
-            const externalId = m ? String(m["Parent SKU"] || "").trim() : line.sku || "";
+            const parentSku = m ? String(m["Parent SKU"] || "").trim() : line.sku || "";
             if (!m && line.sku) allUnmatched.push(line.sku);
             samplesRows.push({
               "Order #": "", "NS SKU": nsSku,
@@ -454,15 +359,15 @@ export default function App() {
               "City": order.shipToCity || "", "State": order.shipToState || "",
               "Zip": order.shipToZip || "", "Country": order.shipToCountry || "US",
               "Ship Method": shipMethod, "Memo": order.memo || memo || "",
-              "Parent SKU": externalId,
+              "Parent SKU": parentSku,
+              "Item": parentSku ? `${parentSku} : ${nsSku}` : nsSku || "",
             });
           });
         });
         setRows(samplesRows);
         setResult({ totalPOs: orders.length, failedPOs: 0, allUnmatched, allCaseMismatches: [] });
-        initApproval(samplesRows, retailer, shipMethod, memo, orderStatus);
       } catch(e) {
-        setErr(`Failed to parse request: ${e.message}`);
+        setErr(friendlyError(e));
       }
       setBusy(false);
       return;
@@ -501,7 +406,7 @@ export default function App() {
           gnbExtracted.push({ id: pdfItem.id, data: extracted });
           currentPdfs = currentPdfs.map(p => p.id === pdfItem.id ? { ...p, status: "done", rows: [], unmatched: [] } : p);
         } catch(e) {
-          currentPdfs = currentPdfs.map(p => p.id === pdfItem.id ? { ...p, status: "error", error: e.message } : p);
+          currentPdfs = currentPdfs.map(p => p.id === pdfItem.id ? { ...p, status: "error", error: friendlyError(e) } : p);
         }
         setPdfs([...currentPdfs]);
       }
@@ -543,7 +448,7 @@ export default function App() {
       for (const { poData, distroData, distroId } of pairs) {
         const itemMatch = im?.length ? lookup(im, null, poData.sku) : null;
         const nsSku = itemMatch ? String(itemMatch["Child SKU"] || "").trim() : poData.sku || "";
-        const externalId = itemMatch ? String(itemMatch["Parent SKU"] || "").trim() : poData.sku || "";
+        const parentSku = itemMatch ? String(itemMatch["Parent SKU"] || "").trim() : poData.sku || "";
         if (!itemMatch && poData.sku) gnbUnmatched.push(poData.sku);
 
         const pairRows = (distroData.locations || []).filter(loc => (Number(loc.quantity)||0) > 0).map(loc => {
@@ -573,7 +478,8 @@ export default function App() {
             "City": loc.city || "", "State": loc.state || "", "Zip": loc.zip || "", "Country": loc.country || "US",
             "Ship Method": resolvedMethod, "Freight Account #": resolvedAccount, "SCAC": resolvedScac,
             "Memo": `Shipping instructions for Quill order: SHIP FREIGHT COLLECT (PO ${poData.poNumber})${ltlNote}`,
-            "Parent SKU": externalId, "_gnbPoNumber": String(poData.poNumber || ""), "_gnbCarrier": String(loc.shipMethod || ""),
+            "Parent SKU": parentSku, "_gnbPoNumber": String(poData.poNumber || ""), "_gnbCarrier": String(loc.shipMethod || ""),
+            "Item": parentSku ? `${parentSku} : ${nsSku}` : nsSku || "",
           };
         });
 
@@ -592,7 +498,6 @@ export default function App() {
       setPdfs([...currentPdfs]);
       setRows(allGnbRows);
       setResult({ totalPOs: pairs.length, failedPOs: currentPdfs.filter(p => p.status === "error").length, allUnmatched: gnbUnmatched, allCaseMismatches: [], skuMismatch });
-      initApproval(allGnbRows, retailer, shipMethod, memo, orderStatus);
       setBusy(false); return;
     }
 
@@ -609,13 +514,18 @@ export default function App() {
         const isImperial = retailer === "Imperial Distributors Inc.";
         const isTjmCan = retailer === "TJ Maxx Canada";
         const isMis = retailer === "Mark-It Smart Inc.";
+        const isSlt = retailer === "Sur La Table";
+        const isGilt = retailer === "Gilt";
+        const isWorldMarket = retailer === "Cost Plus World Market";
+        const isVerdi = retailer === "Verdi Commerce LLC";
+        const isPriceSmart = retailer === "PriceSmart Inc.";
         const resp = await fetch("/api/anthropic/v1/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "claude-sonnet-4-6",
             max_tokens: 4096,
-            system: isHyVee ? HY_VEE_PROMPT : isJungleJims ? JJ_PROMPT : isImperial ? IMPERIAL_PROMPT : isTjmCan ? TJM_CAN_PROMPT : isMis ? MIS_PROMPT : PROMPT,
+            system: isHyVee ? HY_VEE_PROMPT : isJungleJims ? JJ_PROMPT : isImperial ? IMPERIAL_PROMPT : isTjmCan ? TJM_CAN_PROMPT : isMis ? MIS_PROMPT : isSlt ? SLT_PROMPT : isGilt ? GILT_PROMPT : isWorldMarket ? WORLD_MARKET_PROMPT : isVerdi ? VERDI_PROMPT : isPriceSmart ? PRICESMART_PROMPT : PROMPT,
             messages: [{
               role: "user",
               content: [
@@ -656,6 +566,14 @@ export default function App() {
           tjmMemo = `P.O. ${po.poNumber} Dpt. ${tjmDeptNo} - Deal # ${po.dealNumber} - Carton markings must include: Purchase Order Number including Purchase Order Prefix, Ship To Address and Ship From Address, Vendor Style Number, Department Number, Origin Country`;
         }
 
+        let sltDate = "", sltShipDate = "", sltCancelDate = "", sltMabd = "";
+        if (isSlt) {
+          sltDate = isoToMDY(po.orderDate);
+          sltShipDate = isoToMDY(po.shipDate);
+          sltCancelDate = sltShipDate ? addBizDays(sltShipDate, 5) : "";
+          sltMabd = sltCancelDate;
+        }
+
         let misDate = "", misShipDate = "", misCancelDate = "", misMabd = "", misMemo = "";
         if (isMis) {
           misDate = fmtDate(po.poDate);
@@ -665,10 +583,38 @@ export default function App() {
           misMemo = po.notes || "";
         }
 
-        let newRows = [], unmatched = [], caseMismatches = [];
+        let giltShipDate = "", giltCancelDate = "", giltMabd = "";
+        if (isGilt) {
+          giltShipDate = fmtDate(po.shipDate);
+          giltCancelDate = fmtDate(po.cancelDate);
+          giltMabd = giltShipDate ? addBizDays(giltShipDate, 10) : "";
+        }
+
+        let wmShipDate = "", wmCancelDate = "", wmMabd = "";
+        if (isWorldMarket) {
+          wmShipDate = fmtDate(po.shipDate);
+          wmCancelDate = fmtDate(po.cancelDate);
+          wmMabd = fmtDate(po.mabd);
+        }
+
+        let verdiShipDate = "", verdiCancelDate = "", verdiMabd = "";
+        if (isVerdi) {
+          verdiShipDate = fmtDate(po.shipDate);
+          verdiCancelDate = verdiShipDate;
+          verdiMabd = verdiShipDate ? addBizDays(verdiShipDate, 5) : "";
+        }
+
+        let psShipDate = "", psCancelDate = "", psMabd = "";
+        if (isPriceSmart) {
+          psCancelDate = fmtDate(po.revisedDate);
+          psShipDate = po.shipDate ? fmtDate(po.shipDate) : (psCancelDate ? subBizDays(psCancelDate, 5) : "");
+          psMabd = fmtDate(po.deliveryDate) || "";
+        }
+
+        let newRows = [], unmatched = [], caseMismatches = [], casePackViolations = [];
 
         for (const line of po.lineItems) {
-          let nsSku = "", externalId = "", qty = 0, rate = 0, rowCaseMismatch = false, rowDepartment = "", rowCustomerPartNum = "";
+          let nsSku = "", parentSku = "", qty = 0, rate = 0, rowCaseMismatch = false, rowDepartment = "", rowCustomerPartNum = "";
 
           if (isHyVee) {
             const upc11 = String(line.mfgNum || "").substring(0, 6) + String(line.prodNum || "").padStart(5, "0").substring(0, 5);
@@ -676,12 +622,12 @@ export default function App() {
             rowCustomerPartNum = String(line.mfgNum || "");
             if (m) {
               nsSku = String(m["Child SKU"] || "").trim();
-              externalId = String(m["Parent SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
               const cp = parseInt(m["Casepack Outer"]) || 1;
               const pdfMasterPack = parseInt(line.masterPack) || 0;
               rowCaseMismatch = pdfMasterPack > 0 && pdfMasterPack !== cp;
               if (rowCaseMismatch) {
-                caseMismatches.push(`PO ${po.poNumber} - ${externalId}: PDF master pack=${pdfMasterPack}, item master casepack=${cp}`);
+                caseMismatches.push(`PO ${po.poNumber} - ${parentSku}: PDF master pack=${pdfMasterPack}, item master casepack=${cp}`);
               }
               qty = (Number(line.cases) || 0) * cp;
               rate = parseFloat((Number(line.netCostPerCase) / cp).toFixed(4));
@@ -697,12 +643,12 @@ export default function App() {
             const m = im?.length ? im.find(it => String(it["UPC Code"] || "").replace(/\D/g, "").substring(0, 11) === upc11) : null;
             if (m) {
               nsSku = String(m["Child SKU"] || "").trim();
-              externalId = String(m["Parent SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
             } else {
               const label = upc11 || line.description || "";
               unmatched.push(label);
               nsSku = label;
-              externalId = "";
+              parentSku = "";
             }
             qty = Number(line.quantity) || 0;
             rate = Number(line.unitPrice) || 0;
@@ -712,18 +658,18 @@ export default function App() {
             const m = im?.length ? lookup(im, upc12, line.vendorSku) : null;
             if (m) {
               nsSku = String(m["Child SKU"] || "").trim();
-              externalId = String(m["Parent SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
               const cp = parseInt(m["Casepack Outer"]) || 1;
               const pdfCsePck = parseInt(line.csePck) || 0;
               rowCaseMismatch = pdfCsePck > 0 && pdfCsePck !== cp;
               if (rowCaseMismatch) {
-                caseMismatches.push(`PO ${po.poNumber} - ${externalId}: PDF casepack=${pdfCsePck}, item master casepack=${cp}`);
+                caseMismatches.push(`PO ${po.poNumber} - ${parentSku}: PDF casepack=${pdfCsePck}, item master casepack=${cp}`);
               }
             } else {
               const label = line.vendorSku || upc12 || line.description || "";
               unmatched.push(label);
               nsSku = line.vendorSku || "";
-              externalId = line.vendorSku || "";
+              parentSku = line.vendorSku || "";
             }
             qty = Number(line.quantity) || 0;
             rate = Number(line.unitPrice) || 0;
@@ -736,15 +682,32 @@ export default function App() {
             ) : null;
             if (m) {
               nsSku = String(m["Child SKU"] || "").trim();
-              externalId = String(m["Parent SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
             } else {
               unmatched.push(vendorStyle || line.description || "");
               nsSku = vendorStyle;
-              externalId = "";
+              parentSku = "";
             }
             qty = Number(line.units) || 0;
             rate = Number(line.unitCost) || 0;
             rowCustomerPartNum = String(line.style || "");
+          } else if (isSlt) {
+            const style = String(line.style || "").trim();
+            const m = im?.length ? (
+              im.find(it => String(it["Child SKU"] || "").trim().toUpperCase() === style.toUpperCase()) ||
+              im.find(it => String(it["Parent SKU"] || "").trim().toUpperCase() === style.toUpperCase())
+            ) : null;
+            if (m) {
+              nsSku = String(m["Child SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
+            } else {
+              unmatched.push(style || "");
+              nsSku = style;
+              parentSku = "";
+            }
+            qty = Number(line.quantity) || 0;
+            rate = Number(line.unitCost) || 0;
+            rowCustomerPartNum = line.sku ? String(parseInt(line.sku, 10)) : "";
           } else if (isMis) {
             const sku = String(line.sku || "").trim();
             const m = im?.length ? (
@@ -753,28 +716,99 @@ export default function App() {
             ) : null;
             if (m) {
               nsSku = String(m["Child SKU"] || "").trim();
-              externalId = String(m["Parent SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
             } else {
               unmatched.push(sku || "");
               nsSku = sku;
-              externalId = "";
+              parentSku = "";
             }
             qty = Number(line.quantity) || 0;
             rate = Number(line.unitCost) || 0;
+          } else if (isGilt) {
+            const vendorSku = String(line.vendorSku || "").trim();
+            const m = im?.length ? (
+              im.find(it => String(it["Child SKU"] || "").trim().toUpperCase() === vendorSku.toUpperCase()) ||
+              im.find(it => String(it["Parent SKU"] || "").trim().toUpperCase() === vendorSku.toUpperCase())
+            ) : null;
+            if (m) {
+              nsSku = String(m["Child SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
+            } else {
+              unmatched.push(vendorSku || "");
+              nsSku = vendorSku;
+              parentSku = "";
+            }
+            qty = Number(line.quantity) || 0;
+            rate = Number(line.unitCost) || 0;
+            rowCustomerPartNum = String(line.rcSku || "");
+          } else if (isWorldMarket) {
+            const vendorStyle = String(line.vendorStyle || "").trim();
+            const m = im?.length ? (
+              im.find(it => String(it["Child SKU"] || "").trim().toUpperCase() === vendorStyle.toUpperCase()) ||
+              im.find(it => String(it["Parent SKU"] || "").trim().toUpperCase() === vendorStyle.toUpperCase())
+            ) : null;
+            if (m) {
+              nsSku = String(m["Child SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
+            } else {
+              unmatched.push(vendorStyle || "");
+              nsSku = vendorStyle;
+              parentSku = "";
+            }
+            qty = Number(line.quantity) || 0;
+            rate = Number(line.unitCost) || 0;
+            rowCustomerPartNum = String(line.skuNumber || "");
+            const shipPackQty = Number(line.shipPackQty) || 0;
+            if (shipPackQty > 0 && qty % shipPackQty !== 0) {
+              casePackViolations.push(`${line.vendorStyle || line.skuNumber || "?"} — ordered ${qty}, ship pack ${shipPackQty}`);
+            }
+          } else if (isVerdi) {
+            const childSku = String(line.childSku || "").trim();
+            const m = im?.length ? (
+              im.find(it => String(it["Child SKU"] || "").trim().toUpperCase() === childSku.toUpperCase()) ||
+              im.find(it => String(it["Parent SKU"] || "").trim().toUpperCase() === childSku.toUpperCase())
+            ) : null;
+            if (m) {
+              nsSku = String(m["Child SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
+            } else {
+              unmatched.push(childSku || "");
+              nsSku = childSku;
+              parentSku = "";
+            }
+            qty = Number(line.quantity) || 0;
+            rate = Number(line.unitCost) || 0;
+          } else if (isPriceSmart) {
+            const vendorStyle = String(line.vendorStyle || "").trim();
+            const m = im?.length ? (
+              im.find(it => String(it["Child SKU"] || "").trim().toUpperCase() === vendorStyle.toUpperCase()) ||
+              im.find(it => String(it["Parent SKU"] || "").trim().toUpperCase() === vendorStyle.toUpperCase())
+            ) : null;
+            if (m) {
+              nsSku = String(m["Child SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
+            } else {
+              unmatched.push(vendorStyle || "");
+              nsSku = vendorStyle;
+              parentSku = "";
+            }
+            qty = Number(line.quantity) || 0;
+            rate = Number(line.unitCost) || 0;
+            rowCustomerPartNum = String(line.itemNo || "");
           } else {
             if (im?.length) {
               const m = lookup(im, line.upc, line.vendorItemNum);
               if (m) {
                 nsSku = String(m["Child SKU"] || "").trim();
-                externalId = String(m["Parent SKU"] || "").trim() || line.vendorItemNum || "";
+                parentSku = String(m["Parent SKU"] || "").trim() || line.vendorItemNum || "";
               } else {
                 unmatched.push(line.vendorItemNum || line.upc || line.description);
                 nsSku = line.vendorItemNum || "";
-                externalId = line.vendorItemNum || "";
+                parentSku = line.vendorItemNum || "";
               }
             } else {
               nsSku = line.vendorItemNum || "";
-              externalId = line.vendorItemNum || "";
+              parentSku = line.vendorItemNum || "";
             }
             qty = Number(line.quantity) || 0;
             rate = Number(line.unitPrice) || 0;
@@ -786,16 +820,19 @@ export default function App() {
             : isJungleJims ? jjMemo
             : isTjmCan ? tjmMemo
             : isMis ? misMemo
+            : isSlt ? rc.defaultMemo
+            : isPriceSmart ? (memo || po.memo || "")
             : (memo || po.memo || "");
+          const sltPoNumber = isSlt && po.poNumber ? String(parseInt(po.poNumber, 10)) : null;
           const shipToName = po.shipToName || (isHyVee ? "HY-VEE, INC." : "");
           newRows.push({
-            "Order #": po.poNumber, "NS SKU": nsSku, "Date": isMis ? misDate : fmtDate(po.orderDate),
+            "Order #": po.poNumber, "NS SKU": nsSku, "Date": isSlt ? sltDate : isMis ? misDate : fmtDate(po.orderDate),
             "Quantity": qty, "Item Rate": rate, "Amount": parseFloat((qty * rate).toFixed(2)),
-            "Is EDI Sent": rc.isEdiSent, "PO Number": po.poNumber, "NS CUSTOMER": rc.nsCustomer,
+            "Is EDI Sent": rc.isEdiSent, "PO Number": isSlt ? sltPoNumber : po.poNumber, "NS CUSTOMER": rc.nsCustomer,
             "Status": orderStatus,
-            "Ship Date": isTjmCan ? tjmShipDate : isJungleJims ? jjShipDate : isMis ? misShipDate : shipDate,
-            "Cancel Date": isTjmCan ? tjmCancelDate : isJungleJims ? jjCancelDate : isMis ? misCancelDate : cancelDate,
-            "Must Arrive By Date": isTjmCan ? tjmMabd : isJungleJims ? jjMabd : isMis ? misMabd : mabd,
+            "Ship Date": isPriceSmart ? psShipDate : isVerdi ? verdiShipDate : isWorldMarket ? wmShipDate : isGilt ? giltShipDate : isTjmCan ? tjmShipDate : isJungleJims ? jjShipDate : isMis ? misShipDate : isSlt ? sltShipDate : shipDate,
+            "Cancel Date": isPriceSmart ? psCancelDate : isVerdi ? verdiCancelDate : isWorldMarket ? wmCancelDate : isGilt ? giltCancelDate : isTjmCan ? tjmCancelDate : isJungleJims ? jjCancelDate : isMis ? misCancelDate : isSlt ? sltCancelDate : cancelDate,
+            "Must Arrive By Date": isPriceSmart ? psMabd : isVerdi ? verdiMabd : isWorldMarket ? wmMabd : isGilt ? giltMabd : isTjmCan ? tjmMabd : isJungleJims ? jjMabd : isMis ? misMabd : isSlt ? sltMabd : mabd,
             "Name": isTjmCan ? tjmChainName : shipToName,
             "Attention": isTjmCan ? "" : (po.shipToAttention || ""),
             "Address 1": isTjmCan ? (tjmDcAddress.address1 || "") : po.shipToAddress1,
@@ -804,20 +841,22 @@ export default function App() {
             "State": isTjmCan ? (tjmDcAddress.state || "") : po.shipToState,
             "Zip": isTjmCan ? (tjmDcAddress.zip || "") : po.shipToZip,
             "Country": isTjmCan ? "Canada" : po.shipToCountry,
+            "Location": rc.defaultLocation || "",
             "Ship Method": shipMethod, "Memo": rowMemo,
             "Customer Part Number": rowCustomerPartNum,
             "Department Number": isTjmCan ? tjmDeptNo : rowDepartment,
             "Description": line.description || "",
-            "Parent SKU": externalId,
+            "Parent SKU": parentSku,
+            "Item": parentSku ? `${parentSku} : ${nsSku}` : nsSku || "",
             "_caseMismatch": rowCaseMismatch,
           });
         }
 
         if (caseMismatches.length > 0) newRows = newRows.map(r => ({ ...r, _poHasMismatch: true }));
-        currentPdfs = currentPdfs.map(p => p.id === pdfItem.id ? { ...p, status: "done", rows: newRows, unmatched, caseMismatches } : p);
+        currentPdfs = currentPdfs.map(p => p.id === pdfItem.id ? { ...p, status: "done", rows: newRows, unmatched, caseMismatches, casePackViolations } : p);
         setPdfs([...currentPdfs]);
       } catch (e) {
-        currentPdfs = currentPdfs.map(p => p.id === pdfItem.id ? { ...p, status: "error", error: e.message } : p);
+        currentPdfs = currentPdfs.map(p => p.id === pdfItem.id ? { ...p, status: "error", error: friendlyError(e) } : p);
         setPdfs([...currentPdfs]);
       }
     }
@@ -825,10 +864,10 @@ export default function App() {
     const allRows = currentPdfs.filter(p => p.status === "done").flatMap(p => p.rows);
     const allUnmatched = currentPdfs.filter(p => p.status === "done").flatMap(p => p.unmatched || []);
     const allCaseMismatches = currentPdfs.filter(p => p.status === "done").flatMap(p => p.caseMismatches || []);
+    const allCasePackViolations = currentPdfs.filter(p => p.status === "done").flatMap(p => p.casePackViolations || []);
     const failedPOs = currentPdfs.filter(p => p.status === "error").length;
     setRows(allRows);
-    setResult({ totalPOs: currentPdfs.filter(p => p.status === "done").length, failedPOs, allUnmatched, allCaseMismatches });
-    initApproval(allRows, retailer, shipMethod, memo, orderStatus);
+    setResult({ totalPOs: currentPdfs.filter(p => p.status === "done").length, failedPOs, allUnmatched, allCaseMismatches, allCasePackViolations });
     setBusy(false);
   };
 
@@ -839,10 +878,12 @@ export default function App() {
   const isImperialRetailer = retailer === "Imperial Distributors Inc.";
   const isTjmCanRetailer = retailer === "TJ Maxx Canada";
   const isMisRetailer = retailer === "Mark-It Smart Inc.";
+  const isSltRetailer = retailer === "Sur La Table";
+  const isGiltRetailer = retailer === "Gilt";
+  const isWorldMarketRetailer = retailer === "Cost Plus World Market";
   const isSamplesRetailer = retailer === "Samples";
-  const activeCols = isGnbRetailer ? GNB_APPROVAL_COLS : APPROVAL_COLS;
-  const amountColIdx = activeCols.findIndex(c => c.key === "amount");
-  const effectiveRows = rows.map(r => ({
+  const memoIsHardcoded = !isGnbRetailer && (isJungleJimsRetailer || isTjmCanRetailer || isMisRetailer || isSltRetailer);
+  const effectiveRows = rows.map((r, idx) => ({
     ...r,
     // GNB rows carry per-row ship method from distro; don't override with global selector
     ...(!isGnbRetailer && { "Ship Method": shipMethod }),
@@ -859,13 +900,15 @@ export default function App() {
     "Is Sample": rc.isSample,
     ...(retailer === "Samples" ? { "Item Rate": 0, "Amount": 0 } : {}),
     // GNB and JJ memos are auto-generated per row; don't override
-    ...(!isGnbRetailer && !isJungleJimsRetailer && !isTjmCanRetailer && !isMisRetailer && memo ? { "Memo": memo } : {}),
+    ...(!isGnbRetailer && !isJungleJimsRetailer && !isTjmCanRetailer && !isMisRetailer && !isSltRetailer && memo ? { "Memo": memo } : {}),
     "Item": r["Parent SKU"] ? `${r["Parent SKU"]} : ${r["NS SKU"]}` : r["NS SKU"] || "",
     "Customer": retailer === "Samples" && samplesSubcustomer ? `Samples : Samples - ${samplesSubcustomer}` : rc.nsCustomer,
     "Addressee": r["Name"] || "",
+    ...(rowOverrides[idx] || {}),
   }));
   const total = effectiveRows.reduce((s, r) => s + Number(r["Amount"]), 0);
-  const missingFields = (result && effectiveRows.length > 0) ? REQUIRED_FIELDS.filter(f => effectiveRows.some(r => !hasVal(r[f.key]))) : [];
+  const _requiredFields = rc.defaultLocation ? [...REQUIRED_FIELDS, {label:"Location",key:"Location"}] : REQUIRED_FIELDS;
+  const missingFields = (result && effectiveRows.length > 0) ? _requiredFields.filter(f => effectiveRows.some(r => !hasVal(r[f.key]))) : [];
   const queuedCount = pdfs.filter(p => p.status === "queued").length;
   const hasPdfs = pdfs.length > 0;
 
@@ -873,10 +916,33 @@ export default function App() {
     <div style={{fontFamily:"var(--font-sans)",padding:"1.75rem 0",maxWidth:680}}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes im-blink{0%,100%{background:#fee2e2;color:#dc2626}50%{background:transparent;color:var(--color-text-secondary)}} .im-blink{animation:im-blink 1.4s ease-in-out infinite}`}</style>
 
-      <div style={{marginBottom:"1.5rem"}}>
+      <div style={{marginBottom:"1.25rem"}}>
         <h2 style={{fontSize:24,fontWeight:600,margin:"0 0 6px",color:"var(--color-text-primary)"}}>NetSuite PO Converter</h2>
         <p style={{fontSize:15,color:"var(--color-text-secondary)",margin:0}}>Upload retailer purchase orders and download a NetSuite-ready CSV</p>
       </div>
+
+      {(()=>{
+        const stepIdx = result ? 3 : busy ? 2 : (pdfs.length>0||samplesText.trim()) ? 1 : 0;
+        const steps = ["Configure","Upload","Processing","Review & Export"];
+        return (
+          <div style={{display:"flex",alignItems:"center",marginBottom:"1.25rem"}}>
+            {steps.map((label,i)=>{
+              const done=i<stepIdx, active=i===stepIdx;
+              return (
+                <Fragment key={i}>
+                  {i>0&&<div style={{flex:1,height:1.5,background:done?"var(--color-text-primary)":"var(--color-border-secondary)",borderRadius:1}}/>}
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <div style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,flexShrink:0,background:done||active?"var(--color-text-primary)":"var(--color-background-secondary)",color:done||active?"#fff":"var(--color-text-tertiary)",border:`1.5px solid ${done||active?"var(--color-text-primary)":"var(--color-border-secondary)"}`}}>
+                      {done?"✓":i+1}
+                    </div>
+                    <span style={{fontSize:11,fontWeight:active?700:400,color:active?"var(--color-text-primary)":done?"var(--color-text-secondary)":"var(--color-text-tertiary)",whiteSpace:"nowrap"}}>{label}</span>
+                  </div>
+                </Fragment>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Settings tab bar */}
       <div style={{display:"flex",alignItems:"flex-end",borderBottom:"1px solid var(--color-border-secondary)",marginBottom:"0.75rem"}}>
@@ -915,7 +981,8 @@ export default function App() {
           <div>
             <label style={{...S.fieldLabel,fontSize:11,marginBottom:4}}>Ship method</label>
             <select style={{...S.select,padding:"7px 10px",fontSize:13}} value={shipMethod} onChange={e=>setShipMethod(e.target.value)} disabled={busy}>
-              {SHIP_METHODS.map(m=><option key={m}>{m}</option>)}
+              <option value="">-Leave Blank-</option>
+              {SHIP_METHODS.map(m=><option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div>
@@ -945,6 +1012,18 @@ export default function App() {
             <label style={{...S.fieldLabel,fontSize:11,marginBottom:4}}>Memo <span style={{fontWeight:400,color:"var(--color-text-tertiary)"}}>— optional</span></label>
             <input style={{...S.input,padding:"7px 10px",fontSize:13}} type="text" placeholder="e.g. Spring 2026 Drop" value={memo} onChange={e=>setMemo(e.target.value)} disabled={busy}/>
           </div>
+        )}
+        {settingsChanged&&!(memoIsHardcoded&&shipMethod===activeDefaults?.shipMethod&&orderStatus===activeDefaults?.status)&&(
+          <p style={{marginTop:8,fontSize:12,color:"var(--color-text-tertiary)"}}>
+            Changes will apply to this extraction.{" "}
+            <span onClick={saveRetailerDefaults} style={{color:"var(--color-text-secondary)",textDecoration:"underline",cursor:"pointer"}}>Click here</span>
+            {" "}to override defaults for future extractions.
+          </p>
+        )}
+        {memoIsHardcoded&&memo!==activeDefaults?.memo&&(
+          <p style={{marginTop:settingsChanged?4:8,fontSize:12,color:"var(--color-text-tertiary)"}}>
+            Memo cannot be changed due to hard-coded logic in place. Request this change with the admin or manually update within the order preview below or on the CSV file.
+          </p>
         )}
       </div>}
 
@@ -1090,109 +1169,60 @@ export default function App() {
 
         {result.skuMismatch&&<div style={S.msgWarn}><i className="ti ti-alert-triangle" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/><span><strong>SKU Mismatch:</strong> PO SKU ({result.skuMismatch.poSku}) does not match distro sheet Item # ({result.skuMismatch.distroItemNum}). Verify before importing.</span></div>}
         {result.allUnmatched?.length>0&&<div style={S.msgWarn}><i className="ti ti-alert-triangle" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/><span><strong>Unmatched:</strong> {result.allUnmatched.join(", ")} — vendor item # used as fallback</span></div>}
+        {result.allCasePackViolations?.length>0&&<div style={S.msgWarn}><i className="ti ti-alert-triangle" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/><span><strong>Case Pack Violation:</strong> {result.allCasePackViolations.join("; ")} — ordered qty is not a multiple of ship pack qty</span></div>}
         {result.allCaseMismatches?.length>0&&<div style={S.msgWarn}><span><strong>⚠️ {result.allCaseMismatches.length>1?"Case Pack Mismatch Warnings":"Case Pack Mismatch Warning"}</strong><br/>{result.allCaseMismatches.map((m,i)=><span key={i}>{m}.<br/></span>)}<br/>{result.allCaseMismatches.length>1?"Contact buyer to get the POs revised to full case packs. The POs have been updated to Pending Approval pending the buyer's change.":"Contact buyer to get the PO revised to full case packs. The PO has been updated to Pending Approval pending the buyer's change."}</span></div>}
         {missingFields.length>0&&<div style={S.msgWarn}><span><strong>⚠️ {missingFields.length>1?"Missing Required Fields":"Missing Required Field"}</strong><br/>{missingFields.map((f,i)=><span key={i}>{f.label} is missing. Field is required to successfully import.<br/></span>)}</span></div>}
         {!result.allUnmatched?.length&&im&&<div style={S.msgOk}><i className="ti ti-circle-check" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/>All items matched to item master</div>}
         {result.failedPOs>0&&<div style={S.msgErr}><i className="ti ti-alert-circle" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/>{result.failedPOs} PDF{result.failedPOs>1?"s":""} failed — see file list above for details</div>}
 
-        {approval&&(()=>{
-          const curOrder = approval.orders[approvalOrderIdx] || approval.orders[0];
-          const orderTotal = curOrder.lines.reduce((s,l)=>s+(parseFloat(l.amount)||0),0);
-          return (
-          <div style={{...S.card,marginTop:0,marginBottom:"1rem"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <span style={{...S.sectionLabel,margin:0}}>Order Approval Sheet</span>
-              <button style={S.btnSuccess} onClick={exportApprovalXLSX}><i className="ti ti-file-spreadsheet" aria-hidden="true" style={{fontSize:15}}/>Export Excel</button>
-            </div>
-            {/* Order pagination */}
-            {approval.orders.length>1&&(
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-                <button onClick={()=>setApprovalOrderIdx(i=>Math.max(0,i-1))} disabled={approvalOrderIdx===0} style={{background:"none",border:"1px solid var(--color-border-secondary)",borderRadius:6,padding:"4px 10px",cursor:approvalOrderIdx===0?"not-allowed":"pointer",color:"var(--color-text-primary)",opacity:approvalOrderIdx===0?0.35:1,fontFamily:"var(--font-sans)"}}>‹</button>
-                {approval.orders.map((_,i)=>(
-                  <button key={i} onClick={()=>setApprovalOrderIdx(i)} style={{minWidth:28,padding:"4px 8px",borderRadius:6,border:"1px solid var(--color-border-secondary)",background:i===approvalOrderIdx?"#363737":"var(--color-background-secondary)",color:i===approvalOrderIdx?"#fff":"var(--color-text-secondary)",fontFamily:"var(--font-sans)",fontSize:13,cursor:"pointer"}}>{i+1}</button>
-                ))}
-                <button onClick={()=>setApprovalOrderIdx(i=>Math.min(approval.orders.length-1,i+1))} disabled={approvalOrderIdx===approval.orders.length-1} style={{background:"none",border:"1px solid var(--color-border-secondary)",borderRadius:6,padding:"4px 10px",cursor:approvalOrderIdx===approval.orders.length-1?"not-allowed":"pointer",color:"var(--color-text-primary)",opacity:approvalOrderIdx===approval.orders.length-1?0.35:1,fontFamily:"var(--font-sans)"}}>›</button>
-                <span style={{fontSize:13,color:"var(--color-text-secondary)",marginLeft:4}}>PO {curOrder.poNumber} · {curOrder.lines.length} line{curOrder.lines.length!==1?"s":""}</span>
-              </div>
-            )}
-            <div style={{overflowX:"auto",overflowY:"auto",maxHeight:460,border:"0.5px solid var(--color-border-tertiary)",borderRadius:8,marginBottom:8}}>
-              <table style={{borderCollapse:"collapse",tableLayout:"fixed",minWidth:activeCols.reduce((s,c)=>s+c.w,0)}}>
-                <thead>
-                  <tr style={{background:"#BEBEBE"}}>
-                    {activeCols.map((col,ci)=>(
-                      <th key={col.key} style={{...S.th,width:col.w,minWidth:col.w,position:"sticky",top:0,background:"#BEBEBE",zIndex:ci===0?3:2,...(ci===0?{left:0}:{})}}>{col.label}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {curOrder.lines.map((line,li)=>(
-                    <tr key={li}>
-                      {activeCols.map((col,ci)=>(
-                        <td key={col.key} style={{...S.td,borderBottom:li<curOrder.lines.length-1?"0.5px solid var(--color-border-tertiary)":"none",padding:"3px 4px",...(ci===0?{position:"sticky",left:0,background:"var(--color-background-primary)",zIndex:1}:{})}}>
-                          <input
-                            style={{width:"100%",boxSizing:"border-box",padding:"4px 6px",fontSize:12,fontFamily:"var(--font-sans)",border:"1px solid transparent",borderRadius:4,background:"transparent",color:line.caseMismatch?"#ef4444":"var(--color-text-primary)",outline:"none"}}
-                            value={String(isGnbRetailer&&col.key==="date"?(isoToMDY(gnbDate)||line[col.key]):(line[col.key]??""))}
-                            readOnly={ci===0||(isGnbRetailer&&col.key==="date")}
-                            onChange={e=>updateApprovalLine(approvalOrderIdx,li,col.key,e.target.value)}
-                            onFocus={e=>{if(ci!==0&&!(isGnbRetailer&&col.key==="date"))e.target.style.borderColor="var(--color-border-info)";}}
-                            onBlur={e=>e.target.style.borderColor="transparent"}
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr style={{background:"#BEBEBE"}}>
-                    <td colSpan={amountColIdx} style={{...S.td,fontWeight:600,textAlign:"right",padding:"7px 12px"}}>Total</td>
-                    <td style={{...S.td,fontWeight:600,padding:"7px 8px"}}>${orderTotal.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                    <td colSpan={activeCols.length-amountColIdx-1}/>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-          );
-        })()}
 
         <div style={{...S.card,marginTop:0}}>
-          <div style={{display:"flex",gap:4,marginBottom:12,flexWrap:"wrap"}}>
-            {TABS_PREVIEW.map(t=>(
-              <button key={t.label} style={S.previewTabBtn(previewTab===t.label)} onClick={()=>setPreviewTab(t.label)}>{t.label}</button>
-            ))}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <span style={{fontSize:12,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",color:"var(--color-text-secondary)"}}>Purchase Order CSV Export Preview</span>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:11,color:"var(--color-text-tertiary)"}}>Header</span>
+              <div onClick={()=>setShowHdrCols(v=>!v)} style={{width:32,height:18,borderRadius:9,background:showHdrCols?"#16a34a":"var(--color-border-secondary)",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                <div style={{width:14,height:14,borderRadius:"50%",background:"white",position:"absolute",top:2,left:showHdrCols?16:2,transition:"left 0.15s",boxShadow:"0 1px 2px rgba(0,0,0,0.25)"}}/>
+              </div>
+            </div>
           </div>
           {(()=>{
             const _hideCols=new Set(rc.hideCols||[]);
-            const _extraCols=(rc.showCols||{})[previewTab]||[];
-            const previewCols=[...new Set([...(TABS_PREVIEW.find(t=>t.label===previewTab)?.cols||[]),..._extraCols])].filter(h=>!_hideCols.has(h)).filter(h=>effectiveRows.some(r=>hasVal(r[h])));
+            const _extraItemCols=(rc.showCols||{})["Items"]||[];
+            const _allHeaderCols=(TABS_PREVIEW.find(t=>t.label==="Header")?.cols||[]).filter(h=>!_hideCols.has(h)).filter(h=>effectiveRows.some(r=>hasVal(r[h])));
+            const headerCols=showHdrCols?_allHeaderCols:_allHeaderCols.filter(h=>h==="PO Number");
+            const itemCols=[...new Set([...(TABS_PREVIEW.find(t=>t.label==="Items")?.cols||[]),..._extraItemCols])].filter(h=>!_hideCols.has(h)).filter(h=>effectiveRows.some(r=>hasVal(r[h])));
+            const allCols=[...headerCols,...itemCols];
+            const divider=showHdrCols&&itemCols[0];
             return (
           <div style={{overflowX:"auto",overflowY:"auto",maxHeight:460,border:"0.5px solid var(--color-border-tertiary)",borderRadius:8}}>
-            <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <table style={{width:"max-content",borderCollapse:"collapse"}}>
               <thead>
                 <tr style={{background:"#BEBEBE"}}>
                   <th style={{...S.th,width:40,minWidth:40,position:"sticky",top:0,left:0,background:"#BEBEBE",zIndex:3}}>#</th>
-                  {previewCols.map(h=>(
-                    <th key={h} style={{...S.th,position:"sticky",top:0,background:"#BEBEBE",zIndex:2}}>{h}</th>
+                  {allCols.map(h=>(
+                    <th key={h} style={{...S.th,position:"sticky",top:0,background:"#BEBEBE",zIndex:2,...(h===divider?{borderLeft:"1.5px solid var(--color-border-secondary)"}:{})}}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {(()=>{
-                  const lineCounters={};
-                  return effectiveRows.map((row,i)=>{
-                    const poKey=isGnbRetailer?(row._gnbPoNumber||"default"):"default";
-                    lineCounters[poKey]=(lineCounters[poKey]||0)+1;
-                    const lineId=lineCounters[poKey];
-                    return (
-                      <tr key={i}>
-                        <td style={{...S.td,borderBottom:i<effectiveRows.length-1?"0.5px solid var(--color-border-tertiary)":"none",position:"sticky",left:0,background:"var(--color-background-primary)",zIndex:1,textAlign:"center",color:"var(--color-text-tertiary)",fontSize:11,width:40,minWidth:40}}>{lineId}</td>
-                        {previewCols.map(h=>(
-                          <td key={h} style={{...S.td,borderBottom:i<effectiveRows.length-1?"0.5px solid var(--color-border-tertiary)":"none",color:row._caseMismatch?"#ef4444":undefined}}>{row[h]}</td>
-                        ))}
-                      </tr>
-                    );
-                  });
-                })()}
+                {effectiveRows.map((row,i)=>(
+                  <tr key={i}>
+                    <td style={{...S.td,borderBottom:i<effectiveRows.length-1?"0.5px solid var(--color-border-tertiary)":"none",position:"sticky",left:0,background:"var(--color-background-primary)",zIndex:1,textAlign:"center",color:"var(--color-text-tertiary)",fontSize:11,width:40,minWidth:40}}>{i+1}</td>
+                    {allCols.map(h=>(
+                      <td key={h} style={{...S.td,borderBottom:i<effectiveRows.length-1?"0.5px solid var(--color-border-tertiary)":"none",padding:0,position:"relative",...(h===divider?{borderLeft:"1.5px solid var(--color-border-secondary)"}:{})}}>
+                        <div aria-hidden="true" style={{visibility:"hidden",padding:"5px 9px",fontSize:13,fontFamily:"var(--font-sans)",whiteSpace:"nowrap",lineHeight:"normal",userSelect:"none"}}>{String(row[h]??'')||' '}</div>
+                        <input
+                          value={row[h]??''}
+                          onChange={e=>{const v=e.target.value;setRowOverrides(prev=>{const next=[...prev];const updated={...(next[i]||{}),[h]:v};if(h==="Quantity"||h==="Item Rate"){const qty=parseFloat(h==="Quantity"?v:row["Quantity"])||0;const rate=parseFloat(h==="Item Rate"?v:row["Item Rate"])||0;updated["Amount"]=parseFloat((qty*rate).toFixed(2));}next[i]=updated;return next;});}}
+                          style={{position:"absolute",top:0,left:0,right:0,bottom:0,width:"100%",boxSizing:"border-box",padding:"5px 8px",fontSize:13,fontFamily:"var(--font-sans)",border:"1px solid transparent",borderRadius:4,background:"transparent",color:row._caseMismatch?"#ef4444":"var(--color-text-primary)",outline:"none",cursor:"text"}}
+                          onFocus={e=>e.target.style.borderColor="var(--color-border-info)"}
+                          onBlur={e=>e.target.style.borderColor="transparent"}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -1218,7 +1248,7 @@ export default function App() {
               <div style={cardStyle}>
                 <span style={titleStyle}>Purchase Orders</span>
                 <div style={{display:"flex",gap:6}}>
-                  <button style={sageBtn} onClick={()=>dlCSV(isSamplesRetailer?buildSamplesCSV(effectiveRows):isGnbRetailer?buildGnbCSV(effectiveRows):isJungleJimsRetailer?buildJjCSV(effectiveRows):isImperialRetailer?buildImperialCSV(effectiveRows):isTjmCanRetailer?buildTjmCanCSV(effectiveRows):buildCSV(effectiveRows),`NS_${retailer.replace(/\s+/g,"_")}_${result.totalPOs}PO${result.totalPOs!==1?"s":""}.csv`)}><i className="ti ti-download" aria-hidden="true" style={{fontSize:15}}/>Download CSV</button>
+                  <button style={sageBtn} onClick={()=>dlCSV(isSamplesRetailer?buildSamplesCSV(effectiveRows):isGnbRetailer?buildGnbCSV(effectiveRows):isJungleJimsRetailer?buildJjCSV(effectiveRows):isImperialRetailer?buildImperialCSV(effectiveRows):isTjmCanRetailer?buildTjmCanCSV(effectiveRows):buildCSV(effectiveRows),`${retailer.replace(/[^a-zA-Z0-9\s]/g,"").replace(/\s+/g,"_")}_PO_${localISODate()}.csv`)}><i className="ti ti-download" aria-hidden="true" style={{fontSize:15}}/>Download CSV</button>
                   <a href={import.meta.env.DEV?"https://4848284-sb1.app.netsuite.com/app/setup/assistants/nsimport/importassistant.nl?recid=210&new=T":"https://4848284.app.netsuite.com/app/setup/assistants/nsimport/importassistant.nl?recid=206&new=T"} target="_blank" rel="noreferrer" style={sageBtn}><i className="ti ti-upload" aria-hidden="true" style={{fontSize:15}}/>Import CSV</a>
                 </div>
               </div>
@@ -1230,6 +1260,13 @@ export default function App() {
         </div>
       </>)}
       </>}
+      <button
+        onClick={() => setDarkMode(d => !d)}
+        title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+        style={{position:"fixed",bottom:20,right:20,width:40,height:40,borderRadius:"50%",border:"1px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.15)",zIndex:9999}}
+      >
+        {darkMode ? "☀" : "☽"}
+      </button>
     </div>
   );
 }
