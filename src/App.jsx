@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo, Fragment } from "react";
 import JSZip from "jszip";
+import netlifyIdentity from 'netlify-identity-widget';
 
 const RETAILERS = {
   "BJ's Wholesale Club": { nsCustomer: "BJs Wholesale Corporate : BJs Wholesale", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No" },
@@ -211,11 +212,21 @@ export default function App() {
     reader.readAsText(file);
   },[]);
 
+  const [authUser, setAuthUser] = useState(()=>import.meta.env.DEV ? true : netlifyIdentity.currentUser());
+  useEffect(()=>{
+    if(import.meta.env.DEV) return;
+    netlifyIdentity.on('login', u=>{setAuthUser(u); netlifyIdentity.close();});
+    netlifyIdentity.on('logout', ()=>setAuthUser(null));
+    return()=>{netlifyIdentity.off('login');netlifyIdentity.off('logout');};
+  },[]);
+
   const fetchImUpdate = useCallback(async()=>{
     setImUpdateStatus('loading');
     setImUpdateMsg('');
     try{
-      const res=await fetch('/api/netsuite/itemmaster-restlet?searchId=customsearchitem_master');
+      const headers={};
+      if(!import.meta.env.DEV){const token=netlifyIdentity.currentUser()?.token?.access_token;if(token)headers['Authorization']=`Bearer ${token}`;}
+      const res=await fetch('/api/netsuite/itemmaster-restlet?searchId=customsearchitem_master',{headers});
       const data=await res.json();
       if(data.error){setImUpdateStatus('error');setImUpdateMsg(data.error);}
       else{setImUpdateRaw(data);setImUpdateStatus('done');setImUpdateDataSource('api');}
@@ -977,13 +988,29 @@ export default function App() {
   const queuedCount = pdfs.filter(p => p.status === "queued").length;
   const hasPdfs = pdfs.length > 0;
 
+  if(!authUser) return(
+    <div style={{fontFamily:"var(--font-sans)",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{textAlign:"center",padding:"2rem"}}>
+        <h2 style={{fontSize:22,fontWeight:600,margin:"0 0 8px",color:"var(--color-text-primary)"}}>NetSuite PO Converter</h2>
+        <p style={{fontSize:14,color:"var(--color-text-secondary)",margin:"0 0 24px"}}>Sign in to continue</p>
+        <button
+          onClick={()=>netlifyIdentity.open('login')}
+          style={{padding:"9px 28px",fontSize:14,fontWeight:600,fontFamily:"var(--font-sans)",background:"var(--color-text-primary)",color:"var(--color-background-primary)",border:"none",borderRadius:6,cursor:"pointer"}}
+        >Sign in</button>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{fontFamily:"var(--font-sans)",padding:"1.75rem 0",maxWidth:680}}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes im-blink{0%,100%{background:#fee2e2;color:#dc2626}50%{background:transparent;color:var(--color-text-secondary)}} .im-blink{animation:im-blink 1.4s ease-in-out infinite}`}</style>
 
-      <div style={{marginBottom:"1.25rem"}}>
-        <h2 style={{fontSize:24,fontWeight:600,margin:"0 0 6px",color:"var(--color-text-primary)"}}>NetSuite PO Converter</h2>
-        <p style={{fontSize:15,color:"var(--color-text-secondary)",margin:0}}>Upload retailer purchase orders and download a NetSuite-ready CSV</p>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"1.25rem"}}>
+        <div>
+          <h2 style={{fontSize:24,fontWeight:600,margin:"0 0 6px",color:"var(--color-text-primary)"}}>NetSuite PO Converter</h2>
+          <p style={{fontSize:15,color:"var(--color-text-secondary)",margin:0}}>Upload retailer purchase orders and download a NetSuite-ready CSV</p>
+        </div>
+        {!import.meta.env.DEV&&<button onClick={()=>netlifyIdentity.logout()} style={{fontSize:12,color:"var(--color-text-tertiary)",background:"none",border:"none",cursor:"pointer",fontFamily:"var(--font-sans)",padding:"4px 0",marginTop:4,textDecoration:"underline"}}>Sign out</button>}
       </div>
 
       {(()=>{
