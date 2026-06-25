@@ -1,7 +1,7 @@
 import { createHmac } from 'crypto';
 import OAuth from 'oauth-1.0a';
 
-export default async () => {
+export default async (request) => {
   const restletUrl = process.env.NS_RESTLET_ITEMMASTER;
   if (!restletUrl) {
     return new Response(JSON.stringify({ error: 'NS_RESTLET_ITEMMASTER not configured', items: [] }), {
@@ -9,6 +9,10 @@ export default async () => {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+
+  const qs = new URL(request.url).searchParams;
+  const searchId = qs.get('searchId');
+  const targetUrl = searchId ? `${restletUrl}&searchId=${encodeURIComponent(searchId)}` : restletUrl;
 
   const oauth = new OAuth({
     consumer: { key: process.env.NS_CONSUMER_KEY, secret: process.env.NS_CONSUMER_SECRET },
@@ -20,10 +24,10 @@ export default async () => {
   });
 
   const token = { key: process.env.NS_TOKEN_ID, secret: process.env.NS_TOKEN_SECRET };
-  const auth = oauth.toHeader(oauth.authorize({ url: restletUrl, method: 'GET' }, token)).Authorization;
+  const auth = oauth.toHeader(oauth.authorize({ url: targetUrl, method: 'GET' }, token)).Authorization;
 
   try {
-    const r = await fetch(restletUrl, {
+    const r = await fetch(targetUrl, {
       method: 'GET',
       headers: { Authorization: auth, 'Content-Type': 'application/json' },
     });

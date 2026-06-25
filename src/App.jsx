@@ -179,6 +179,11 @@ export default function App() {
   const [gnbFedexAccount, setGnbFedexAccount] = useState("704499884");
   const [im, setIm] = useState(null);
   const [imSource, setImSource] = useState(null);
+  const [imUpdateRaw, setImUpdateRaw] = useState(null);
+  const [imUpdateStatus, setImUpdateStatus] = useState('idle');
+  const [imUpdateMsg, setImUpdateMsg] = useState('');
+  const [imUpdateSearch, setImUpdateSearch] = useState('');
+  const [imUpdateDataSource, setImUpdateDataSource] = useState('api');
   // pdfs: { id, name, base64, status: 'loading'|'queued'|'processing'|'done'|'error', rows, unmatched, error }
   const [pdfs, setPdfs] = useState([]);
   const [pdfDrag, setPdfDrag] = useState(false);
@@ -192,6 +197,7 @@ export default function App() {
   const [settingsTouched, setSettingsTouched] = useState(false);
   const pdfRef = useRef();
   const imRef = useRef();
+  const imUpdateRef = useRef();
 
   useEffect(()=>{
     (async()=>{
@@ -201,7 +207,7 @@ export default function App() {
           const data=await nsRes.json();
           if(!data.error&&data.items?.length){
             const find=(row,...labels)=>{for(const l of labels){const k=Object.keys(row).find(k=>k.toLowerCase()===l.toLowerCase());if(k&&row[k])return row[k];}return '';};
-            const items=data.items.map(r=>({'Child SKU':find(r,'child sku'),'Parent SKU':find(r,'parent sku'),'UPC Code':find(r,'upc code'),'Case UPC':find(r,'case upc'),'Casepack Outer':find(r,'casepack outer'),'Description':find(r,'description','name')})).filter(r=>r['Child SKU']);
+            const items=data.items.map(r=>{const c=find(r,'child sku');const p=find(r,'parent sku');return{'Child SKU':c,'Parent SKU':p,'UPC Code':find(r,'upc code'),'Case UPC':find(r,'case upc'),'Casepack Outer':find(r,'casepack outer'),'Description':find(r,'sku sales description'),'Name':p?`${p} : ${c}`:c};}).filter(r=>r['Child SKU']);
             if(items.length){
               setIm(items);
               setImSource(`NetSuite · ${items.length} items`);
@@ -231,6 +237,33 @@ export default function App() {
     };
     reader.readAsText(file);
   },[]);
+
+  const loadImUpdateCSV = useCallback((file)=>{
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const parsed=parseImCsv(e.target.result);
+      setImUpdateDataSource('csv');
+      if(!parsed.length){setImUpdateStatus('error');setImUpdateMsg('No valid rows found in CSV');return;}
+      setImUpdateRaw({count:parsed.length,items:parsed});
+      setImUpdateStatus('done');
+      setImUpdateMsg('');
+    };
+    reader.readAsText(file);
+  },[]);
+
+  const fetchImUpdate = useCallback(async()=>{
+    setImUpdateStatus('loading');
+    setImUpdateMsg('');
+    try{
+      const res=await fetch('/api/netsuite/itemmaster-restlet?searchId=customsearchitem_master');
+      const data=await res.json();
+      if(data.error){setImUpdateStatus('error');setImUpdateMsg(data.error);}
+      else{setImUpdateRaw(data);setImUpdateStatus('done');setImUpdateDataSource('api');}
+    }catch(e){setImUpdateStatus('error');setImUpdateMsg(e.message||'Network error');}
+  },[]);
+
+  useEffect(()=>{fetchImUpdate();},[]);
 
   const lookup = useCallback((items,upc,vin)=>{
     if(!items?.length) return null;
@@ -1014,7 +1047,12 @@ export default function App() {
           className={!im?.length?"im-blink":""}
           style={{...S.mainTabBtn(settingsTab==="im"),...(!im?.length?{background:undefined,color:undefined}:{})}}
           onClick={()=>setSettingsTab("im")}
-        >Item Master</button>
+        >Item Master - DELETE</button>
+        <button
+          className={!imUpdateRaw?.items?.length?"im-blink":""}
+          style={{...S.mainTabBtn(settingsTab==="im-update"),...(!imUpdateRaw?.items?.length?{background:undefined,color:undefined}:{})}}
+          onClick={()=>setSettingsTab("im-update")}
+        >Item Master UPDATE</button>
       </div>
 
       {/* Order Settings */}
@@ -1133,6 +1171,94 @@ export default function App() {
           )}
         </div>
         <input ref={imRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>loadIMCSV(e.target.files[0])}/>
+      </div>}
+
+      {/* Item Master UPDATE — status */}
+      {settingsTab==="im-update"&&<div style={{...S.card,padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+        <span style={{...S.sectionLabel,display:"block",marginBottom:8}}>Item Master Results</span>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+          {imUpdateStatus==='done'&&imUpdateRaw?(()=>{
+            const find=(row,...labels)=>{for(const l of labels){const k=Object.keys(row).find(k=>k.toLowerCase()===l.toLowerCase());if(k&&row[k])return row[k];}return '';};
+            const matched=imUpdateRaw.items.filter(r=>find(r,'child sku')).length;
+            return(
+              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:3}}>
+                <span style={{fontSize:13,color:"var(--color-text-success)",fontWeight:500}}>{imUpdateDataSource==='csv'?'CSV':' NetSuite'} · {matched} items</span>
+                <span style={{fontSize:12,color:"var(--color-text-secondary)",textAlign:"left"}}>
+                  {imUpdateDataSource==='csv'?(
+                    <>
+                      Fetched from manually uploaded CSV.<br/>
+                      <span style={{cursor:"pointer",color:"var(--color-text-secondary)",fontWeight:500,textDecoration:"underline"}} onClick={fetchImUpdate}>Fetch from API</span>
+                      {" "}or{" "}
+                      <a href="https://4848284.app.netsuite.com/app/common/search/searchresults.nl?searchid=75078&whence=" target="_blank" rel="noreferrer" style={{color:"var(--color-text-secondary)",fontWeight:500}}>download</a>
+                      {" "}/{" "}
+                      <span style={{cursor:"pointer",color:"var(--color-text-secondary)",fontWeight:500,textDecoration:"underline"}} onClick={()=>imUpdateRef.current?.click()}>upload</span>{" updated CSV"}
+                    </>
+                  ):(
+                    <>
+                      Fetched from customsearchitem_master.{" "}
+                      <span style={{cursor:"pointer",color:"var(--color-text-secondary)",fontWeight:500,textDecoration:"underline"}} onClick={fetchImUpdate}>Refresh</span><br/>
+                      <br/>
+                      <span style={{color:"var(--color-text-tertiary)"}}>
+                        Only{" "}
+                        <a href="https://4848284.app.netsuite.com/app/common/search/searchresults.nl?searchid=75078&whence=" target="_blank" rel="noreferrer" style={{color:"var(--color-text-secondary)",fontWeight:500}}>download the saved search</a>
+                        {" "}as a CSV and{" "}
+                        <span style={{cursor:"pointer",color:"var(--color-text-secondary)",fontWeight:500,textDecoration:"underline"}} onClick={()=>imUpdateRef.current?.click()}>upload here</span>
+                        {" "}as a failsafe if the API is unavailable
+                      </span>
+                    </>
+                  )}
+                </span>
+              </div>
+            );
+          })():imUpdateStatus==='error'?(
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:13,color:"var(--color-text-danger)",fontWeight:500}}>{imUpdateMsg}</span>
+              <button style={S.btnReplace} onClick={fetchImUpdate}>Try again</button>
+            </div>
+          ):(
+            <button
+              style={{...S.btnReplace,...(imUpdateStatus==='loading'?{opacity:0.6,cursor:'not-allowed'}:{})}}
+              onClick={fetchImUpdate}
+              disabled={imUpdateStatus==='loading'}
+            >{imUpdateStatus==='loading'?'Fetching…':'Fetch from API'}</button>
+          )}
+        </div>
+        <input ref={imUpdateRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{loadImUpdateCSV(e.target.files[0]);e.target.value='';}} />
+      </div>}
+
+      {/* Item Master UPDATE — search */}
+      {settingsTab==="im-update"&&imUpdateStatus==='done'&&imUpdateRaw&&<div style={{...S.card,padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+        <span style={{...S.sectionLabel,display:"block",marginBottom:8}}>Search item master</span>
+        <input
+          style={{...S.input,padding:"7px 10px",fontSize:13,width:"100%",boxSizing:"border-box"}}
+          type="text"
+          placeholder="Search by Child SKU, Parent SKU, UPC, Case UPC…"
+          value={imUpdateSearch}
+          onChange={e=>setImUpdateSearch(e.target.value)}
+        />
+        {imUpdateSearch.trim()&&(()=>{
+          const q=imUpdateSearch.trim().toLowerCase();
+          const COLS=['Internal ID','Type','Parent SKU','Parent SKU Description','Child SKU','SKU Sales Description','SKU Detailed Description','Unit Color Family','UPC Code','Case UPC','Pantone','Interior Color','Coating','Finish','Casepack Outer','Casepack Inner','Brand','Sub Brand','Licensed Property','Exclusive Customer','Factory Name','Capacity','Master Category','Product Type','Function','Sub Function','Range','Sub Range','Size Range','Size','Intro Year',"20' Container Loading","40' Container Loading","40'HQ Container Loading","45' Container Loading",'HTS Code','Unit Depth (in)','Unit Width (in)','Unit Height (in)','Unit Weight (lbs)','Gift Box','Gift Box Depth (in)','Gift Box Width (in)','Gift Box Height (in)','Gift Box Weight (lbs)','Remailer','Remailer Depth (in)','Remailer Width (in)','Remailer Height (in)','Remailer Weight (lbs)','Master Carton Depth (in)','Master Carton Width (in)','Master Carton Height (in)','Master Carton Weight (lbs)','Pallet Ti','Pallet Hi','Pallet Length (in)','Pallet Width (in)','Pallet Height (in)','Pallet Weight (lbs)','AB1200 Statement Required?','Certifications','SB Electric','Corded?','Cord Length (in)','Cord Color','Power Source','Indoor/Outdoor Use','Hertz','Volts','Watts','Materials','Item Includes','Number of Pieces In Box','Components','Prop 65 Warning Required?','Care Instructions','Max Temperature (F)','MOQ per Color','MOQ per Order','PTFE Like SKU','Duty Rate','Tariff Percentage','Manufacturing Country','Port of Export','WERCSmart ID','Warranty','IM Languages','GB Languages','KO Form Link','Artwork Dropbox Link','Copy Link','SEO Copy Link','A+ Copy Link','Video Dropbox Link','Approved Assets for Digital Marketing Link','Amazon ASIN','Target DPCI','Target TCIN','CDU','NGF','Inv Health','2023 Price','2024 Price','2025 Price','Notes'];
+          const getVal=(row,h)=>{if(row[h]!==undefined)return String(row[h]||'');const k=Object.keys(row).find(k=>k.toLowerCase()===h.toLowerCase());return k?String(row[k]||''):'';}
+          const allHits=imUpdateRaw.items.filter(r=>COLS.some(h=>{const v=getVal(r,h);return v&&v.toLowerCase().includes(q);}));
+          if(!allHits.length) return <p style={{fontSize:13,color:"var(--color-text-secondary)",marginTop:8,marginBottom:0}}>No matches found.</p>;
+          return(
+            <div style={{overflow:"auto",maxHeight:400,marginTop:8,border:"1px solid var(--color-border-tertiary)",borderRadius:6}}>
+              <table style={{borderCollapse:"collapse",fontSize:12,width:"max-content",minWidth:"100%"}}>
+                <thead style={{position:"sticky",top:0,zIndex:1}}>
+                  <tr>{COLS.map(h=><th key={h} style={{padding:"4px 8px",background:"var(--color-background-secondary)",borderBottom:"1px solid var(--color-border-tertiary)",borderRight:"1px solid var(--color-border-tertiary)",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {allHits.map((row,i)=>(
+                    <tr key={i} style={{background:i%2===0?"":"var(--color-background-secondary)"}}>
+                      {COLS.map(h=><td key={h} style={{padding:"3px 8px",borderBottom:"1px solid var(--color-border-tertiary)",borderRight:"1px solid var(--color-border-tertiary)",whiteSpace:"nowrap"}}>{getVal(row,h)}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>}
 
       {/* Samples text card */}
