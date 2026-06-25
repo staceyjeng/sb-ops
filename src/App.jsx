@@ -85,16 +85,23 @@ function localISODate(){const d=new Date();return `${d.getFullYear()}-${String(d
 function addDays(ds,n){if(!ds)return "";const[m,d,y]=ds.split("/").map(Number);const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+n);return `${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}/${dt.getFullYear()}`;}
 function subBizDays(ds,n){if(!ds)return "";const[m,d,y]=ds.split("/").map(Number);const dt=new Date(y,m-1,d);let rem=n;while(rem>0){dt.setDate(dt.getDate()-1);const dow=dt.getDay();if(dow!==0&&dow!==6)rem--;}return `${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}/${dt.getFullYear()}`;}
 function addBizDays(ds,n){if(!ds)return "";const[m,d,y]=ds.split("/").map(Number);const dt=new Date(y,m-1,d);let rem=n;while(rem>0){dt.setDate(dt.getDate()+1);const dow=dt.getDay();if(dow!==0&&dow!==6)rem--;}return `${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}/${dt.getFullYear()}`;}
+function isoAddBizDays(iso,n){if(!iso)return "";const mdy=isoToMDY(iso);const r=addBizDays(mdy,n);const[rm,rd,ry]=r.split("/");return `${ry}-${rm}-${rd}`;}
+const UPS_GROUND_TRANSIT={"NV":2,"AZ":2,"OR":2,"WA":2,"ID":3,"UT":3,"MT":3,"WY":3,"CO":3,"NM":3,"ND":4,"SD":4,"NE":4,"KS":4,"MN":4,"IA":4,"MO":4,"WI":4,"IL":4,"MI":4,"IN":4,"OH":4,"KY":4,"TN":4,"AR":4,"OK":4,"LA":5,"MS":5,"AL":5,"GA":5,"FL":5,"SC":5,"NC":5,"VA":5,"WV":5,"MD":5,"DE":5,"NJ":5,"NY":5,"PA":5,"CT":5,"RI":5,"MA":5,"NH":5,"VT":5,"ME":5,"DC":5,"PR":6,"VI":6,"GU":6};
+function upsGroundDays(zip,state){const z=parseInt((zip||"").replace(/\D/g,"").slice(0,3)||"0");if(state==="CA"||(!state&&z>=900&&z<=961)){return z>=933?2:1;}if(state==="TX"||(!state&&z>=750&&z<=799)){return z>=780?5:4;}return UPS_GROUND_TRANSIT[state]||5;}
+function genSamplePOBase(attn,company,yymmdd){const src=(attn||"").trim();if(src){const words=src.split(/\s+/).filter(Boolean);const initial=words[0]?words[0][0].toUpperCase():"";const raw=words.length>1?words[words.length-1]:words[0]||"";const last=raw.replace(/[^a-zA-Z]/g,"");return `${initial}${last.charAt(0).toUpperCase()+last.slice(1)}Sample${yymmdd}`;}const co=(company||"").replace(/[^a-zA-Z0-9]/g,"").slice(0,12);return `${co}Sample${yymmdd}`;}
+function getSamplesDefaultShipDate(){const now=new Date();const est=new Date(now.toLocaleString("en-US",{timeZone:"America/New_York"}));const day=est.getDay(),h=est.getHours(),m=est.getMinutes();const isWeekday=day!==0&&day!==6;const pastCutoff=h>14||(h===14&&m>=30);const base=`${String(est.getMonth()+1).padStart(2,"0")}/${String(est.getDate()).padStart(2,"0")}/${est.getFullYear()}`;return(isWeekday&&!pastCutoff)?base:addBizDays(base,1);}
+const SAMPLES_PO_KEY="sbops_sample_po";
+function allocSamplePO(base){const today=localISODate().replace(/-/g,"").slice(2);let t={date:"",used:{}};try{t=JSON.parse(localStorage.getItem(SAMPLES_PO_KEY)||"{}");}catch{}if(t.date!==today)t={date:today,used:{}};t.used[base]=(t.used[base]||0)+1;const n=t.used[base];localStorage.setItem(SAMPLES_PO_KEY,JSON.stringify(t));return n===1?base:`${base}-${n}`;}
 
 const PROMPT=`Extract data from this purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","deliveryDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY or empty","cancelDate":"MM/DD/YYYY or empty","mustArriveByDate":"MM/DD/YYYY or empty","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":"","lineItems":[{"upc":"","vendorItemNum":"","itemNum":"","quantity":0,"unitPrice":0,"description":""}]}\n\nRules: mustArriveByDate=deliveryDate if only one date. shipDate/cancelDate=empty if not stated. memo=any delivery appointment or scheduling note on the PO (e.g. "Vendor to call Shipping Location for appointment"); leave empty if none. itemNum=the retailer's own item/SKU number for the product (e.g. "ITEM NUM", "Item #", "Item Number" column); empty string if not present. Extract ALL lines. ONLY JSON.`;
 
-const HY_VEE_PROMPT=`Extract data from this Hy-Vee purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","mustArriveByDate":"MM/DD/YYYY","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":"","lineItems":[{"mfgNum":"","prodNum":"","cases":0,"masterPack":0,"netCostPerCase":0,"description":""}]}\n\nRules: Each line item spans two rows. Row 1: 6-digit MFG# (in VENDOR column), Master Pack/Size, Order Code. Row 2: ORDER QTY (cases ordered), ORDER UNIT (CASES), 5-digit PROD#, description, then cost columns. mfgNum=6-digit MFG# from row 1. prodNum=5-digit PROD# from row 2. cases=ORDER QTY integer. masterPack=the integer before the backslash in the MASTER PACK/SIZE field (e.g. "6\\1EA-12X5" → 6). netCostPerCase=NET COST column value (third cost column). mustArriveByDate=SCHEDULE SHIPMENT TO ARRIVE ON date. memo=always empty string (ignore SPECIAL ALLOWANCES/MESSAGES). Extract ALL line items. ONLY JSON.`;
+const HY_VEE_PROMPT=`Extract data from this Hy-Vee purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","mustArriveByDate":"MM/DD/YYYY","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":"","lineItems":[{"mfgNum":"","prodNum":"","orderCode":"","cases":0,"masterPack":0,"netCostPerCase":0,"description":""}]}\n\nRules: Each line item spans two rows. Row 1: 6-digit MFG# (in VENDOR column), Master Pack/Size, Order Code. Row 2: ORDER QTY (cases ordered), ORDER UNIT (CASES), 5-digit PROD#, description, then cost columns. mfgNum=6-digit MFG# from row 1. prodNum=5-digit PROD# from row 2. orderCode=Order Code value from row 1. cases=ORDER QTY integer. masterPack=the integer before the backslash in the MASTER PACK/SIZE field (e.g. "6\\1EA-12X5" → 6). netCostPerCase=NET COST column value (third cost column). mustArriveByDate=SCHEDULE SHIPMENT TO ARRIVE ON date. memo=always empty string (ignore SPECIAL ALLOWANCES/MESSAGES). Extract ALL line items. ONLY JSON.`;
 
-const IMPERIAL_PROMPT=`Extract data from this Imperial Distributors purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","mustArriveByDate":"MM/DD/YYYY","shipToName":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"US","lineItems":[{"itemNum":"","vendorSku":"","gtin":"","csePck":0,"quantity":0,"unitPrice":0}]}\n\nRules: poNumber=PO No. value. orderDate=Order Date in MM/DD/YYYY (e.g. 6/02/26 → 6/02/2026). mustArriveByDate=Expected Arrival Date in MM/DD/YYYY. shipToName=ship-to company name. shipToAddress1=street address. shipToAddress2=warehouse/location name if present (e.g. Worcester Warehouse); empty string if none. lineItems: extract ALL lines from item table; ignore the *** Note *** page. itemNum=Item_# column (numeric customer part number, e.g. 118667). vendorSku=SKU after the "/" in the Mfr.No field (e.g. DST200GBAQ04); empty string if missing or cut off. gtin=dashed barcode in the Mfr.No field (e.g. 008-10051-85598-2). csePck=Pck column value (items per case, e.g. 4). quantity=Piece Qty column (total pieces not cases). unitPrice=Base Cost W/ OI column (per-piece price). ONLY JSON.`;
+const IMPERIAL_PROMPT=`Extract data from this Imperial Distributors purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","mustArriveByDate":"MM/DD/YYYY","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"US","lineItems":[{"itemNum":"","vendorSku":"","gtin":"","csePck":0,"quantity":0,"unitPrice":0,"caseUpc":"","sizeMfrNo":0,"numberOfCases":0,"costOfDisplay":0}]}\n\nRules: poNumber=PO No. value. orderDate=Order Date in MM/DD/YYYY (e.g. 6/02/26 → 6/02/2026). mustArriveByDate=Expected Arrival Date in MM/DD/YYYY. shipToName=ship-to company name. shipToAttention=warehouse name (e.g. "Millis Warehouse", "Worcester Warehouse"). shipToAddress1=street address. shipToAddress2=suite or unit if present (e.g. "Suite 8"); "" if none. lineItems: extract ALL lines; ignore the *** Note *** page. itemNum=Item_# column. For Worcester orders: vendorSku=SKU after "/" in Mfr.No (e.g. DST200GBAQ04); gtin=dashed barcode in Mfr.No (e.g. 008-10051-85598-2); csePck=Pck column; quantity=Piece Qty (total pieces); unitPrice=Base Cost W/ OI; leave caseUpc/sizeMfrNo/numberOfCases/costOfDisplay as 0/"". For Millis orders: caseUpc=barcode with dashes (e.g. "108-56290-00510-5"); sizeMfrNo=Size Mfr. No column (case pack size); numberOfCases=Qty column (# of cases ordered); costOfDisplay=Cost of Display column; leave gtin/csePck/quantity/unitPrice as 0/"". ONLY JSON.`;
 
 const JJ_PROMPT=`Extract data from this Jungle Jim's purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","shipToName":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","deliveryInstructions":"","lineItems":[{"upc":"11 digits","department":"","quantity":0,"unitPrice":0,"description":""}]}\n\nRules: poNumber=Purchase Order number. orderDate=Order Date in MM/DD/YYYY. shipToName=ship-to company name (e.g. JUNGLE JIMS EASTGATE). deliveryInstructions=text after "Delivery Instructions:" label on the PO; empty string if none. lineItems: extract ALL lines. upc=first 11 digits of the UPC column only. department=Dpt column value (e.g. 63). quantity=Unit/Lbs column (total units, NOT cases). unitPrice=Cost/Un column. ONLY JSON.`;
 
-const SAMPLES_PROMPT=`Parse this sample request message from an employee. It may contain one or more separate orders (each going to a distinct shipping address). Return ONLY valid JSON, no markdown, no explanation.\n\n{"orders":[{"lineItems":[{"sku":"exact SKU string as written","quantity":0}],"shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":""}]}\n\nRules:\n- Each distinct shipping address = one order object.\n- sku = the product code exactly as written (e.g. DMW10008, DCAF26CMGBCM02). Strip product descriptions; keep only the code.\n- quantity = integer. "1x of each" or "1x" before a list = 1 for every item. Parse the number before "x" as the quantity.\n- shipToAttention = name from "Attn:", "ATTN:", or similar label; empty string if none.\n- shipToAddress2 = suite, floor, door, unit, building — any secondary address line; empty string if none.\n- shipToCountry = 2-letter ISO: "US" for USA, "CA" for Canada.\n- memo = any extra delivery notes (door numbers, division, line review, room numbers, deal numbers, etc.) not captured in other fields; empty string if none.\n- ONLY JSON.`;
+const SAMPLES_PROMPT=`Parse this sample request message from an employee. It may contain one or more separate orders (each going to a distinct shipping address). Return ONLY valid JSON, no markdown, no explanation.\n\n{"orders":[{"shipDate":"MM/DD/YYYY","mabd":"MM/DD/YYYY","lineItems":[{"sku":"exact SKU string as written","quantity":0}],"shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"2-letter","memo":""}]}\n\nRules:\n- Each distinct shipping address = one order object.\n- shipDate = date mentioned as "ship date", "ship by", "ship window", "ship" etc. Format MM/DD/YYYY; if year omitted assume current year. Empty string if not mentioned.\n- mabd = date mentioned as "MABD", "must arrive by", "arrive by", "need by" etc. Format MM/DD/YYYY; if year omitted assume current year. Empty string if not mentioned.\n- sku = the product code exactly as written (e.g. DMW10008, DCAF26CMGBCM02). Strip product descriptions; keep only the code.\n- quantity = integer. "1x of each" or "1x" before a list = 1 for every item. Parse the number before "x" as the quantity.\n- shipToName = company, facility, or recipient name appearing before the street address line (the line containing the street number and street name); anything before that line is the name or attention, never memo.\n- shipToAttention = name from "Attn:", "ATTN:", or similar label; empty string if none.\n- shipToAddress2 = suite, floor, door, unit, building — any secondary address line; empty string if none.\n- shipToCountry = 2-letter ISO: "US" for USA, "CA" for Canada.\n- memo = explicit delivery instructions or notes only (e.g. door codes, line review info, deal numbers); these typically appear in a separate section with at least one blank line separating them from the address and SKU lines; do NOT pull text from within the address block into memo.\n- ONLY JSON.`;
 
 const GNB_PROMPT=`This is a Global New Beginnings (GNBI) document. Identify its type and extract accordingly. Return ONLY valid JSON, no markdown, no explanation.\n\nIf this is a PURCHASE ORDER (has "PURCHASE ORDER" heading, a PO # field, and SKU line items with unit cost):\n{"docType":"po","poNumber":"number only e.g. 3320","orderDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","sku":"exact SKU string e.g. RSMS150GBRR24","unitCost":0.0000}\n\nIf this is a DISTRIBUTION SHEET (table of fulfillment center rows with a Quill P.O. # column and ship-to addresses):\n{"docType":"distro","gnbiPoNumber":"","itemNum":"Item # value e.g. RSMS150GBRR24","quillSkuNum":"Quill SKU # value e.g. 3171196","primaryShipDate":"MM/DD/YYYY","locations":[{"quillPoNum":"e.g. XSYI66-1","name":"full center name e.g. Quill Fulfillment Center #472","address1":"street address line 1","address2":"street address line 2 if present else empty","city":"","state":"2-letter","zip":"","country":"US","quantity":0,"shipMethod":"exact carrier name as shown on the sheet e.g. Fed Ex Ground, UPS Ground, T-Force, Roadrunner","scac":"SCAC code(s) exactly as shown e.g. RDFS or UPGF/TFIN; empty string if not shown","shipDate":"MM/DD/YYYY"}]}\n\nDistro rules: exclude rows where quantity=0. shipMethod=the exact carrier name from the sheet — do NOT normalize or replace unknown carriers with Fed Ex Ground or UPS Ground. scac=the raw SCAC string as printed (may contain slashes for multiple codes); empty string if absent. shipDate=the "Latest Acceptable Ship Date" for that row; if blank use primaryShipDate. ONLY JSON.`;
 
@@ -164,6 +171,9 @@ export default function App() {
   const [memo, setMemo] = useState("");
   const [samplesSubcustomer, setSamplesSubcustomer] = useState("");
   const [samplesText, setSamplesText] = useState("");
+  const [samplesShipDate, setSamplesShipDate] = useState("");
+  const [samplesCancelDate, setSamplesCancelDate] = useState("");
+  const [samplesMabd, setSamplesMabd] = useState("");
   const [gnbDate, setGnbDate] = useState(localISODate);
   const [gnbUpsAccount, setGnbUpsAccount] = useState("8V4012");
   const [gnbFedexAccount, setGnbFedexAccount] = useState("704499884");
@@ -232,7 +242,7 @@ export default function App() {
     return null;
   },[]);
 
-  const handleRetailer=(r)=>{if(r!==retailer){resetAll();setSamplesSubcustomer("");}setRetailer(r);if(RETAILERS[r]){const saved=retailerOverrides[r];setShipMethod(saved?.shipMethod??RETAILERS[r].shipMethod);setOrderStatus(saved?.status??RETAILERS[r].status);setMemo(saved?.memo!==undefined?saved.memo:(RETAILERS[r].defaultMemo||""));}};
+  const handleRetailer=(r)=>{if(r!==retailer){resetAll();setSamplesSubcustomer("");}setRetailer(r);if(RETAILERS[r]){const saved=retailerOverrides[r];const isSamples=r==="Samples";setShipMethod(saved?.shipMethod??RETAILERS[r].shipMethod);setOrderStatus(isSamples?RETAILERS[r].status:(saved?.status??RETAILERS[r].status));setMemo(isSamples?(RETAILERS[r].defaultMemo||""):(saved?.memo!==undefined?saved.memo:(RETAILERS[r].defaultMemo||"")));}};;
 
 
   const addPDFs = (files) => {
@@ -297,20 +307,24 @@ export default function App() {
 
   const activeDefaults = retailer && RETAILERS[retailer] ? (() => {
     const saved=retailerOverrides[retailer]; const rc=RETAILERS[retailer];
-    return {shipMethod:saved?.shipMethod??rc.shipMethod, status:saved?.status??rc.status, memo:saved?.memo!==undefined?saved.memo:(rc.defaultMemo||"")};
+    const isSamples=retailer==="Samples";return {shipMethod:saved?.shipMethod??rc.shipMethod, status:isSamples?rc.status:(saved?.status??rc.status), memo:isSamples?(rc.defaultMemo||""):(saved?.memo!==undefined?saved.memo:(rc.defaultMemo||""))};
   })() : null;
-  const settingsChanged = !!(activeDefaults && (shipMethod!==activeDefaults.shipMethod||orderStatus!==activeDefaults.status||memo!==activeDefaults.memo));
+  const settingsChanged = !!(activeDefaults && (
+    retailer === "Samples"
+      ? shipMethod !== activeDefaults.shipMethod
+      : (shipMethod!==activeDefaults.shipMethod||orderStatus!==activeDefaults.status||memo!==activeDefaults.memo)
+  ));
 
   const saveRetailerDefaults = () => {
-    const updated={...retailerOverrides,[retailer]:{shipMethod,status:orderStatus,memo}};
+    const toSave=retailer==="Samples"?{shipMethod}:{shipMethod,status:orderStatus,memo};const updated={...retailerOverrides,[retailer]:toSave};
     setRetailerOverrides(updated);
     localStorage.setItem("retailer-defaults",JSON.stringify(updated));
   };
 
   const resetAll = () => {
     const saved=retailerOverrides[retailer];const rc=RETAILERS[retailer]||{};
-    const defaultMemo=saved?.memo!==undefined?saved.memo:(rc.defaultMemo||"");
-    setPdfs([]); setResult(null); setRows([]); setRowOverrides([]); setErr(""); setBusy(false); setBusyMsg(""); setMemo(defaultMemo); setGnbDate(localISODate()); setGnbUpsAccount("8V4012"); setGnbFedexAccount("704499884"); setSamplesSubcustomer(""); setSamplesText("");
+    const defaultMemo=retailer==="Samples"?(rc.defaultMemo||""):(saved?.memo!==undefined?saved.memo:(rc.defaultMemo||""));
+    setPdfs([]); setResult(null); setRows([]); setRowOverrides([]); setErr(""); setBusy(false); setBusyMsg(""); setMemo(defaultMemo); setGnbDate(localISODate()); setGnbUpsAccount("8V4012"); setGnbFedexAccount("704499884"); setSamplesSubcustomer(""); setSamplesText(""); setSamplesShipDate(""); setSamplesCancelDate(""); setSamplesMabd("");
     if (pdfRef.current) pdfRef.current.value = "";
   };
 
@@ -339,7 +353,10 @@ export default function App() {
         const rc = RETAILERS[retailer];
         const samplesRows = [];
         const allUnmatched = [];
-        orders.forEach(order => {
+        const yymmdd = localISODate().replace(/-/g,"").slice(2);
+        const orderPONums = orders.map(order => allocSamplePO(genSamplePOBase(order.shipToAttention, order.shipToName, yymmdd)));
+        orders.forEach((order, oi) => {
+          const effectiveShipDate = order.shipDate || getSamplesDefaultShipDate();
           (order.lineItems || []).forEach(line => {
             const m = im?.length ? lookup(im, null, line.sku) : null;
             const nsSku = m ? String(m["Child SKU"] || "").trim() : line.sku || "";
@@ -350,10 +367,10 @@ export default function App() {
               "Date": isoToMDY(localISODate()),
               "Quantity": Number(line.quantity) || 1, "Item Rate": 0, "Amount": 0,
               "Is EDI Sent": rc.isEdiSent, "Is Sample": rc.isSample,
-              "PO Number": "",
+              "PO Number": orderPONums[oi],
               "NS CUSTOMER": `Samples : Samples - ${samplesSubcustomer}`,
               "Status": orderStatus,
-              "Ship Date": "", "Cancel Date": "", "Must Arrive By Date": "",
+              "Ship Date": effectiveShipDate, "Cancel Date": addBizDays(effectiveShipDate, 1), "Must Arrive By Date": order.mabd || addBizDays(effectiveShipDate, upsGroundDays(order.shipToZip, order.shipToState)),
               "Name": order.shipToName || "", "Attention": order.shipToAttention || "",
               "Address 1": order.shipToAddress1 || "", "Address 2": order.shipToAddress2 || "",
               "City": order.shipToCity || "", "State": order.shipToState || "",
@@ -519,23 +536,32 @@ export default function App() {
         const isWorldMarket = retailer === "Cost Plus World Market";
         const isVerdi = retailer === "Verdi Commerce LLC";
         const isPriceSmart = retailer === "PriceSmart Inc.";
-        const resp = await fetch("/api/anthropic/v1/messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 4096,
-            system: isHyVee ? HY_VEE_PROMPT : isJungleJims ? JJ_PROMPT : isImperial ? IMPERIAL_PROMPT : isTjmCan ? TJM_CAN_PROMPT : isMis ? MIS_PROMPT : isSlt ? SLT_PROMPT : isGilt ? GILT_PROMPT : isWorldMarket ? WORLD_MARKET_PROMPT : isVerdi ? VERDI_PROMPT : isPriceSmart ? PRICESMART_PROMPT : PROMPT,
-            messages: [{
-              role: "user",
-              content: [
-                { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfItem.base64 } },
-                { type: "text", text: "Extract the purchase order data." }
-              ]
-            }]
-          })
-        });
-        const data = await resp.json();
+        const systemPrompt = isHyVee ? HY_VEE_PROMPT : isJungleJims ? JJ_PROMPT : isImperial ? IMPERIAL_PROMPT : isTjmCan ? TJM_CAN_PROMPT : isMis ? MIS_PROMPT : isSlt ? SLT_PROMPT : isGilt ? GILT_PROMPT : isWorldMarket ? WORLD_MARKET_PROMPT : isVerdi ? VERDI_PROMPT : isPriceSmart ? PRICESMART_PROMPT : PROMPT;
+        let resp, data;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) {
+            setBusyMsg(`Processing ${i + 1} of ${queued.length}: ${pdfItem.name} — Claude overloaded, retrying (${attempt}/2)...`);
+            await new Promise(r => setTimeout(r, 3000 * attempt));
+          }
+          resp = await fetch("/api/anthropic/v1/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6",
+              max_tokens: 4096,
+              system: systemPrompt,
+              messages: [{
+                role: "user",
+                content: [
+                  { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfItem.base64 } },
+                  { type: "text", text: "Extract the purchase order data." }
+                ]
+              }]
+            })
+          });
+          data = await resp.json();
+          if (resp.status !== 529 && !String(data.error?.message || "").toLowerCase().includes("overloaded")) break;
+        }
         if (!resp.ok || data.error) throw new Error(data.error?.message || `API error ${resp.status}`);
         const raw = data.content?.find(b => b.type === "text")?.text || "";
         if (!raw) throw new Error("No text in API response. Check your API key.");
@@ -619,7 +645,7 @@ export default function App() {
           if (isHyVee) {
             const upc11 = String(line.mfgNum || "").substring(0, 6) + String(line.prodNum || "").padStart(5, "0").substring(0, 5);
             const m = im?.length ? im.find(it => String(it["UPC Code"] || "").substring(0, 11) === upc11) : null;
-            rowCustomerPartNum = String(line.mfgNum || "");
+            rowCustomerPartNum = String(line.orderCode || "");
             if (m) {
               nsSku = String(m["Child SKU"] || "").trim();
               parentSku = String(m["Parent SKU"] || "").trim();
@@ -654,26 +680,50 @@ export default function App() {
             rate = Number(line.unitPrice) || 0;
             rowDepartment = String(line.department || "");
           } else if (isImperial) {
-            const upc12 = String(line.gtin || "").replace(/\D/g, "").slice(-12);
-            const m = im?.length ? lookup(im, upc12, line.vendorSku) : null;
-            if (m) {
-              nsSku = String(m["Child SKU"] || "").trim();
-              parentSku = String(m["Parent SKU"] || "").trim();
-              const cp = parseInt(m["Casepack Outer"]) || 1;
-              const pdfCsePck = parseInt(line.csePck) || 0;
-              rowCaseMismatch = pdfCsePck > 0 && pdfCsePck !== cp;
-              if (rowCaseMismatch) {
-                caseMismatches.push(`PO ${po.poNumber} - ${parentSku}: PDF casepack=${pdfCsePck}, item master casepack=${cp}`);
+            const isMillis = String(po.shipToCity || "").toLowerCase().trim() === "millis";
+            if (isMillis) {
+              const rawCaseUpc = String(line.caseUpc || "").replace(/\D/g, "");
+              const m = rawCaseUpc && im?.length ? im.find(it => String(it["Case UPC"] || "").replace(/\D/g, "") === rawCaseUpc) : null;
+              const sizeMfrNo = parseInt(line.sizeMfrNo) || 1;
+              const costOfDisplay = Number(line.costOfDisplay) || 0;
+              if (m) {
+                nsSku = String(m["Child SKU"] || "").trim();
+                parentSku = String(m["Parent SKU"] || "").trim();
+                const imCasePack = parseInt(m["Casepack Outer"]) || 0;
+                if (imCasePack > 0 && sizeMfrNo !== imCasePack) {
+                  rowCaseMismatch = true;
+                  caseMismatches.push(`PO ${po.poNumber} - ${parentSku || rawCaseUpc}: PDF case pack=${sizeMfrNo}, item master case pack=${imCasePack}`);
+                }
+              } else {
+                unmatched.push(rawCaseUpc || line.itemNum || "");
+                nsSku = rawCaseUpc;
+                parentSku = rawCaseUpc;
               }
+              qty = Number(line.numberOfCases) || 0;
+              rate = sizeMfrNo > 0 ? parseFloat((costOfDisplay / sizeMfrNo).toFixed(4)) : 0;
+              rowCustomerPartNum = String(line.itemNum || "");
             } else {
-              const label = line.vendorSku || upc12 || line.description || "";
-              unmatched.push(label);
-              nsSku = line.vendorSku || "";
-              parentSku = line.vendorSku || "";
+              const upc12 = String(line.gtin || "").replace(/\D/g, "").slice(-12);
+              const m = im?.length ? lookup(im, upc12, line.vendorSku) : null;
+              if (m) {
+                nsSku = String(m["Child SKU"] || "").trim();
+                parentSku = String(m["Parent SKU"] || "").trim();
+                const cp = parseInt(m["Casepack Outer"]) || 1;
+                const pdfCsePck = parseInt(line.csePck) || 0;
+                rowCaseMismatch = pdfCsePck > 0 && pdfCsePck !== cp;
+                if (rowCaseMismatch) {
+                  caseMismatches.push(`PO ${po.poNumber} - ${parentSku}: PDF casepack=${pdfCsePck}, item master casepack=${cp}`);
+                }
+              } else {
+                const label = line.vendorSku || upc12 || line.description || "";
+                unmatched.push(label);
+                nsSku = line.vendorSku || "";
+                parentSku = line.vendorSku || "";
+              }
+              qty = Number(line.quantity) || 0;
+              rate = Number(line.unitPrice) || 0;
+              rowCustomerPartNum = String(line.itemNum || "");
             }
-            qty = Number(line.quantity) || 0;
-            rate = Number(line.unitPrice) || 0;
-            rowCustomerPartNum = String(line.itemNum || "");
           } else if (isTjmCan) {
             const vendorStyle = String(line.vendorStyle || "").trim();
             const m = im?.length ? (
@@ -885,8 +935,9 @@ export default function App() {
   const memoIsHardcoded = !isGnbRetailer && (isJungleJimsRetailer || isTjmCanRetailer || isMisRetailer || isSltRetailer);
   const effectiveRows = rows.map((r, idx) => ({
     ...r,
+    ...(rowOverrides[idx] || {}),
     // GNB rows carry per-row ship method from distro; don't override with global selector
-    ...(!isGnbRetailer && { "Ship Method": shipMethod }),
+    "Ship Method": isGnbRetailer ? (r["Ship Method"] || "") : shipMethod,
     // GNB date and account numbers come from the inputs and update live
     ...(isGnbRetailer && gnbDate ? { "Date": isoToMDY(gnbDate) } : {}),
     ...(isGnbRetailer ? {
@@ -896,18 +947,20 @@ export default function App() {
     } : {}),
     "Status": r._poHasMismatch ? "Pending Approval" : orderStatus,
     "NS CUSTOMER": retailer === "Samples" && samplesSubcustomer ? `Samples : Samples - ${samplesSubcustomer}` : rc.nsCustomer,
-       "Is EDI Sent": rc.isEdiSent,
+    "Is EDI Sent": rc.isEdiSent,
     "Is Sample": rc.isSample,
-    ...(retailer === "Samples" ? { "Item Rate": 0, "Amount": 0 } : {}),
+    ...(isSamplesRetailer ? { "Item Rate": 0, "Amount": 0 } : {}),
+    ...(isSamplesRetailer && samplesShipDate ? { "Ship Date": isoToMDY(samplesShipDate) } : {}),
+    ...(isSamplesRetailer && samplesCancelDate ? { "Cancel Date": isoToMDY(samplesCancelDate) } : {}),
+    ...(isSamplesRetailer && samplesMabd ? { "Must Arrive By Date": isoToMDY(samplesMabd) } : {}),
     // GNB and JJ memos are auto-generated per row; don't override
     ...(!isGnbRetailer && !isJungleJimsRetailer && !isTjmCanRetailer && !isMisRetailer && !isSltRetailer && memo ? { "Memo": memo } : {}),
     "Item": r["Parent SKU"] ? `${r["Parent SKU"]} : ${r["NS SKU"]}` : r["NS SKU"] || "",
     "Customer": retailer === "Samples" && samplesSubcustomer ? `Samples : Samples - ${samplesSubcustomer}` : rc.nsCustomer,
     "Addressee": r["Name"] || "",
-    ...(rowOverrides[idx] || {}),
   }));
   const total = effectiveRows.reduce((s, r) => s + Number(r["Amount"]), 0);
-  const _requiredFields = rc.defaultLocation ? [...REQUIRED_FIELDS, {label:"Location",key:"Location"}] : REQUIRED_FIELDS;
+  const _requiredFields = (rc.defaultLocation ? [...REQUIRED_FIELDS, {label:"Location",key:"Location"}] : REQUIRED_FIELDS).filter(f => isSamplesRetailer ? f.key !== "Addressee" : true);
   const missingFields = (result && effectiveRows.length > 0) ? _requiredFields.filter(f => effectiveRows.some(r => !hasVal(r[f.key]))) : [];
   const queuedCount = pdfs.filter(p => p.status === "queued").length;
   const hasPdfs = pdfs.length > 0;
@@ -992,6 +1045,20 @@ export default function App() {
             </select>
           </div>
         </div>
+        {isSamplesRetailer&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
+          <div>
+            <label style={{...S.fieldLabel,fontSize:11,marginBottom:4}}>Ship Date</label>
+            <input style={{...S.input,padding:"7px 10px",fontSize:13}} type="date" value={samplesShipDate} onChange={e=>{const v=e.target.value;setSamplesShipDate(v);if(v){setSamplesCancelDate(isoAddBizDays(v,1));setSamplesMabd(isoAddBizDays(v,5));}else{setSamplesCancelDate("");setSamplesMabd("");}}} disabled={busy}/>
+          </div>
+          <div>
+            <label style={{...S.fieldLabel,fontSize:11,marginBottom:4}}>Cancel Date</label>
+            <input style={{...S.input,padding:"7px 10px",fontSize:13}} type="date" value={samplesCancelDate} onChange={e=>setSamplesCancelDate(e.target.value)} disabled={busy}/>
+          </div>
+          <div>
+            <label style={{...S.fieldLabel,fontSize:11,marginBottom:4}}>Must Arrive By Date</label>
+            <input style={{...S.input,padding:"7px 10px",fontSize:13}} type="date" value={samplesMabd} onChange={e=>setSamplesMabd(e.target.value)} disabled={busy}/>
+          </div>
+        </div>}
         {isGnbRetailer ? (
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
             <div>
@@ -1172,6 +1239,7 @@ export default function App() {
         {result.allCasePackViolations?.length>0&&<div style={S.msgWarn}><i className="ti ti-alert-triangle" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/><span><strong>Case Pack Violation:</strong> {result.allCasePackViolations.join("; ")} — ordered qty is not a multiple of ship pack qty</span></div>}
         {result.allCaseMismatches?.length>0&&<div style={S.msgWarn}><span><strong>⚠️ {result.allCaseMismatches.length>1?"Case Pack Mismatch Warnings":"Case Pack Mismatch Warning"}</strong><br/>{result.allCaseMismatches.map((m,i)=><span key={i}>{m}.<br/></span>)}<br/>{result.allCaseMismatches.length>1?"Contact buyer to get the POs revised to full case packs. The POs have been updated to Pending Approval pending the buyer's change.":"Contact buyer to get the PO revised to full case packs. The PO has been updated to Pending Approval pending the buyer's change."}</span></div>}
         {missingFields.length>0&&<div style={S.msgWarn}><span><strong>⚠️ {missingFields.length>1?"Missing Required Fields":"Missing Required Field"}</strong><br/>{missingFields.map((f,i)=><span key={i}>{f.label} is missing. Field is required to successfully import.<br/></span>)}</span></div>}
+        {isSamplesRetailer&&result&&effectiveRows.some(r=>!hasVal(r["Addressee"])&&!hasVal(r["Attention"]))&&<div style={S.msgWarn}><i className="ti ti-alert-triangle" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/><span><strong>Missing Addressee / Attention</strong><br/>One or more orders has neither Addressee nor Attention set.</span></div>}
         {!result.allUnmatched?.length&&im&&<div style={S.msgOk}><i className="ti ti-circle-check" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/>All items matched to item master</div>}
         {result.failedPOs>0&&<div style={S.msgErr}><i className="ti ti-alert-circle" aria-hidden="true" style={{fontSize:16,flexShrink:0}}/>{result.failedPOs} PDF{result.failedPOs>1?"s":""} failed — see file list above for details</div>}
 
