@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo, Fragment } from "react";
+﻿import { useState, useRef, useCallback, useEffect, useMemo, Fragment } from "react";
 import JSZip from "jszip";
 import netlifyIdentity from 'netlify-identity-widget';
 
@@ -11,7 +11,7 @@ const RETAILERS = {
   "Dollar General Direct Import": { nsCustomer: "Dollar General Direct Import", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import", dev: true },
   "Gilt": { nsCustomer: "Gilt", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultMemo: "Email inboundtrans@ruelala.com or call (502) 281-4419 for routing instructions before shipping the order" },
   "Global New Beginnings": { nsCustomer: "Global New Beginnings Inc.", shipMethod: "Collect", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", type: "gnb" },
-  "Home Hardware": { nsCustomer: "Home Hardware", shipMethod: "Route", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import", dev: true },
+  "Home Hardware": { nsCustomer: "Home Hardware", shipMethod: "Collect", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultLocation: "Direct Import" },
   "Hy-Vee": { nsCustomer: "Hy-Vee", shipMethod: "ROUTEPPD", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", orderUnit: "cases" },
   "Imperial Distributors Inc.": { nsCustomer: "Imperial Distributors Inc.", shipMethod: "ROUTEPPD", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultMemo: "Frgt Terms :$1000 Prepaid", hideCols: ["Freight Account #","SCAC"] },
   "Jungle Jims Market Inc": { nsCustomer: "Jungle Jims Market Inc", shipMethod: "UPS Ground", status: "Pending Fulfillment", isEdiSent: "No", isSample: "No", defaultMemo: "Packing slip or invoice must be on the outside of the package, with the department specified. Jungle Jim's does not accept shipments from UPS freight. UPS Ground is Fine.", hideCols: ["Customer Part Number","Freight Account #","SCAC"], showCols: {"Items": ["Department Number"]} },
@@ -71,6 +71,8 @@ function buildWalmartCanCSV(rows){return buildFilteredCSV(WAL_CAN_CSV_HEADERS,ro
 const WAL_DI_PROMPT=`Extract ALL destinations from this Walmart Direct Import purchase order document. Return ONLY valid JSON, no markdown, no explanation.\n\n{"orders":[{"poNumber":"","orderDate":"YYYY-MM-DD","shipDate":"YYYY-MM-DD","cancelDate":"YYYY-MM-DD","addressee":"","quoteId":"","eventCode":"","inStoreDate":"YYYY-MM-DD","loadingPort":"","lineItems":[{"vendorStyle":"","quantity":0,"unitCost":0.00,"packQty":0}]}]}\n\nRules:\n- Return one entry per destination row.\n- poNumber=Purchase Order number (e.g. 1006764461).\n- orderDate=Create Date in YYYY-MM-DD.\n- shipDate=Vendor Ship Date (first date on the destination row) in YYYY-MM-DD.\n- cancelDate=Cancel Date (second date on the destination row, one line below ship date) in YYYY-MM-DD.\n- addressee=Destination name exactly as printed (e.g. RIDGEVILLE SC FLOW).\n- quoteId=Number from the "QUOTE COPIED FROM TEMPLATE:" line in the Notes/Misc comments section (digits only, e.g. 21321671); empty string if not found.\n- eventCode=Event code from Event(Date): field (e.g. OLHOLIWK35), without parentheses/date; empty string if not found.\n- inStoreDate=In Store Date in YYYY-MM-DD; empty string if not found.\n- loadingPort=Loading Port / Place of Possession; empty string if not found.\n- lineItems: vendorStyle=Vendor Stock number (e.g. DAFT230002). quantity=Total Cartons per Line as integer. unitCost=NET FIRST COST decimal value. packQty=Pack #: value as integer; 1 if not found.\n- Extract ALL line items per destination.\n- ONLY JSON.`;
 const WAL_DI_CSV_HEADERS=["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo","Location"];
 function buildWalmartDiCSV(rows){return buildFilteredCSV(WAL_DI_CSV_HEADERS,rows);}
+const HH_CSV_HEADERS=["Date","PO Number","Customer","Status","Item","Customer Part Number","Quantity","Item Rate","Amount","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo","Location"];
+function buildHhCSV(rows){return buildFilteredCSV(HH_CSV_HEADERS,rows);}
 const TJM_CAN_CSV_HEADERS=["Date","PO Number","Customer","Status","Location","Ship Date","Cancel Date","Must Arrive By Date","Addressee","Attention","Address 1","Address 2","City","State","Zip","Country","Ship Method","Memo","Item","Customer Part Number","Quantity","Item Rate","Amount","Department Number"];
 function buildTjmCanCSV(rows){return buildFilteredCSV(TJM_CAN_CSV_HEADERS,rows);}
 function buildCpnCSV(rows){const seen=new Set();const lines=[["Customer","Item","Name"]];for(const r of rows){const cpn=String(r["Customer Part Number"]||"").trim();const childSku=String(r["NS SKU"]||"").trim();const parentSku=String(r["Parent SKU"]||"").trim();if(!cpn||!childSku)continue;const item=parentSku?`${parentSku} : ${childSku}`:childSku;const customer=String(r["Customer"]||"").trim();const key=`${customer}|${item}|${cpn}`;if(seen.has(key))continue;seen.add(key);lines.push([customer,item,cpn]);}return lines.map(row=>row.map(v=>esc(v)).join(",")).join("\n");}
@@ -97,6 +99,7 @@ function friendlyError(e) {
 }
 function dlCSV(content,name){const b=new Blob(["﻿"+content],{type:"text/csv;charset=utf-8;"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
 function isoToMDY(iso){if(!iso)return "";const[y,m,d]=iso.split("-");return `${parseInt(m)}/${parseInt(d)}/${y}`;}
+function mddFormat(mdy){if(!mdy)return "";const p=mdy.split("/");if(p.length<2)return "";const mn=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return `${parseInt(p[1])}-${mn[parseInt(p[0])-1]||""}`; }
 function localISODate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
 function addDays(ds,n){if(!ds)return "";const[m,d,y]=ds.split("/").map(Number);const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+n);return `${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}/${dt.getFullYear()}`;}
 function subBizDays(ds,n){if(!ds)return "";const[m,d,y]=ds.split("/").map(Number);const dt=new Date(y,m-1,d);let rem=n;while(rem>0){dt.setDate(dt.getDate()-1);const dow=dt.getDay();if(dow!==0&&dow!==6)rem--;}return `${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}/${dt.getFullYear()}`;}
@@ -124,6 +127,7 @@ const GNB_PROMPT=`This is a Global New Beginnings (GNBI) document. Identify its 
 const SLT_PROMPT=`Extract data from this Sur La Table purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"YYYY-MM-DD","shipDate":"YYYY-MM-DD","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"","lineItems":[{"style":"","sku":"","quantity":0,"unitCost":0.00,"shipPackQty":0}]}\n\nRules:\n- poNumber=PURCHASE ORDER number exactly as printed (with leading zeros, e.g. 0001688975).\n- orderDate=ORDER DATE in YYYY-MM-DD.\n- shipDate=BEGIN SHIP DATE in YYYY-MM-DD.\n- Ship-to block: first line=shipToName, second line=shipToAttention (e.g. EAGLEPOINT BUSINESS PARK), remaining lines=street address.\n- shipToAddress1=street address line (e.g. 901 E NORTHFIELD DR). If the street line contains a unit/suite/# (e.g. #200), split it: street goes in shipToAddress1, unit goes in shipToAddress2.\n- shipToAddress2=unit, suite, or # portion of the street address; empty string if none.\n- shipToState=2-letter abbreviation. shipToCountry=full country name as printed.\n- lineItems: style=STYLE column value (e.g. DEC012WH). sku=SKU column value exactly as printed with leading zeros (e.g. 0008975526). quantity=QTY integer. unitCost=COST decimal. shipPackQty=MIN PACK column value as integer; 0 if not present.\n- Extract ALL line items.\n- ONLY JSON.`;
 
 const WAL_CAN_PROMPT=`Extract ALL purchase orders from this PDF. There may be one or more POs. Return ONLY valid JSON, no markdown, no explanation.\n\n{"orders":[{"poNumber":"","orderDate":"YYYY-MM-DD","shipDate":"YYYY-MM-DD","cancelDate":"YYYY-MM-DD","mabd":"YYYY-MM-DD","addressee":"","quoteNumber":"","lineItems":[{"vendorStyle":"","quantity":0,"unitCost":0.00,"shipPackQty":0}]}]}\n\nRules:\n- Return one entry in "orders" per distinct Purchase Order found in the PDF.\n- poNumber=Purchase Order number exactly as printed (with leading zeros, e.g. 0004314907).\n- orderDate=Order date / PO date in YYYY-MM-DD.\n- shipDate=Start Ship Date / Ship Window Start / Not Before Date in YYYY-MM-DD.\n- cancelDate=Cancel Date / Ship Window End / Not After Date / Ship Not After in YYYY-MM-DD; empty string if not found.\n- mabd=Must Arrive By / Arrival Date / Requested Delivery Date / Arrive No Later Than in YYYY-MM-DD.\n- addressee=Ship-to company name exactly as printed (e.g. WAL-MART IMD CANADA).\n- quoteNumber=Quote number or template number referenced in the PO (digits only, e.g. 20135648); empty string if not present.\n- lineItems: vendorStyle=vendor item number/style as printed. quantity=ordered quantity as integer. unitCost=unit cost/price as decimal. shipPackQty=Quantity Per Pack value as integer; 0 if not present.\n- Extract ALL line items for each PO.\n- ONLY JSON.`;
+const HH_PROMPT=`Extract data from this Home Hardware purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","lineItems":[{"vendorStyle":"","hhNbr":"","quantity":0,"unitCost":0.00}]}\n\nRules:\n- poNumber=Purchase Order Number (e.g. X604S07962).\n- orderDate=Date Issued in MM/DD/YYYY (e.g. 2026/04/17 → 4/17/2026).\n- shipDate=Ship Date in MM/DD/YYYY (e.g. 2026/06/25 → 6/25/2026).\n- lineItems: vendorStyle=vendor style/SKU (e.g. DAPP150V2CA04). hhNbr=HH Nbr column value (e.g. 3813-078). quantity=Quantity integer. unitCost=Unit Cost decimal.\n- Extract ALL line items.\n- ONLY JSON.`;
 const WAL_CAN_RTF_PROMPT=`Extract ALL purchase orders from this Walmart Canada Retail Link RTF document. Return ONLY valid JSON, no markdown, no explanation.\n\n{"orders":[{"poNumber":"","orderDate":"YYYY-MM-DD","shipDate":"YYYY-MM-DD","cancelDate":"YYYY-MM-DD","addressee":"","quoteId":"","lineItems":[{"vendorStyle":"","quantity":0,"unitCost":0.00,"packQty":0}]}]}\n\nRules:\n- Return one entry per Purchase Order found.\n- poNumber=Purchase Order number exactly as printed (with leading zeros, e.g. 0004314907).\n- orderDate=Create Date in YYYY-MM-DD.\n- shipDate=Vendor Ship Date (first date on the DESTINATION row) in YYYY-MM-DD.\n- cancelDate=Cancel Date (second date on the DESTINATION row, one line below ship date) in YYYY-MM-DD.\n- addressee=Destination name exactly as printed (e.g. VIDC WEST).\n- quoteId=Number from "QUOTE COPIED FROM TEMPLATE:" in Misc comments (digits only, e.g. 20135648); empty string if not found.\n- lineItems: vendorStyle=Vendor Stock number exactly as printed (e.g. DMIC100GBCA02). quantity=QUANTITY (EA.) value as integer (NOT cartons). unitCost=FIRST COST USD decimal (NOT Net First Cost). packQty=Pack #: value as integer; 1 if not found.\n- Extract ALL line items per PO.\n- ONLY JSON.`;
 const VERDI_PROMPT=`Extract data from this Verdi Commerce purchase order PDF. Return ONLY valid JSON, no markdown, no explanation.\n\n{"poNumber":"","orderDate":"MM/DD/YYYY","shipDate":"MM/DD/YYYY","shipToName":"","shipToAttention":"","shipToAddress1":"","shipToAddress2":"","shipToCity":"","shipToState":"2-letter","shipToZip":"","shipToCountry":"full country name e.g. United States","lineItems":[{"childSku":"","quantity":0,"unitCost":0.00}]}\n\nRules:\n- poNumber=PO # field.\n- orderDate=Date field in MM/DD/YYYY.\n- shipDate=Ship Date field in MM/DD/YYYY.\n- Ship To block: first line=shipToName (e.g. "PO 4911817-99"), second line=shipToAttention (company name, e.g. "Theisen Supply Inc"), third line=shipToAddress1 (street address). shipToAddress2="" if not present.\n- shipToCountry=full country name (United States, not US).\n- lineItems: childSku=Item column value with all spaces and line breaks removed (e.g. "DEG200GBB K01" or "DEG200GBB\\nK01" → "DEG200GBBK01"). quantity=Quantity integer. unitCost=Rate decimal.\n- Extract ALL line items.\n- ONLY JSON.`;
 
@@ -602,7 +606,8 @@ export default function App() {
         const isWalmartCan = retailer === "Walmart Canada";
         const isWalmartDi = retailer === "Walmart DI - US";
         const isWalmartCanRtf = isWalmartCan && !!pdfItem.rtfText;
-        const systemPrompt = isHyVee ? HY_VEE_PROMPT : isJungleJims ? JJ_PROMPT : isImperial ? IMPERIAL_PROMPT : isTjmCan ? TJM_CAN_PROMPT : isMis ? MIS_PROMPT : isSlt ? SLT_PROMPT : isGilt ? GILT_PROMPT : isWorldMarket ? WORLD_MARKET_PROMPT : isVerdi ? VERDI_PROMPT : isPriceSmart ? PRICESMART_PROMPT : isWalmartCan ? (pdfItem.rtfText ? WAL_CAN_RTF_PROMPT : WAL_CAN_PROMPT) : isWalmartDi ? WAL_DI_PROMPT : PROMPT;
+        const isHomeHardware = retailer === "Home Hardware";
+        const systemPrompt = isHyVee ? HY_VEE_PROMPT : isJungleJims ? JJ_PROMPT : isImperial ? IMPERIAL_PROMPT : isTjmCan ? TJM_CAN_PROMPT : isMis ? MIS_PROMPT : isSlt ? SLT_PROMPT : isGilt ? GILT_PROMPT : isWorldMarket ? WORLD_MARKET_PROMPT : isVerdi ? VERDI_PROMPT : isPriceSmart ? PRICESMART_PROMPT : isWalmartCan ? (pdfItem.rtfText ? WAL_CAN_RTF_PROMPT : WAL_CAN_PROMPT) : isWalmartDi ? WAL_DI_PROMPT : isHomeHardware ? HH_PROMPT : PROMPT;
         let resp, data;
         for (let attempt = 0; attempt < 3; attempt++) {
           if (attempt > 0) {
@@ -713,6 +718,13 @@ export default function App() {
           walCanShipDate = isoToMDY(po.shipDate);
           walCanCancelDate = isoToMDY(po.cancelDate) || (walCanShipDate ? addDays(walCanShipDate, 7) : "");
           walCanMabd = isWalmartCanRtf ? "" : isoToMDY(po.mabd);
+        }
+
+        let hhShipDate = "", hhCancelDate = "", hhMabd = "";
+        if (isHomeHardware) {
+          hhShipDate = fmtDate(po.shipDate);
+          hhCancelDate = hhShipDate;
+          hhMabd = hhShipDate;
         }
 
         let walDiShipDate = "", walDiCancelDate = "", walDiMemo = "";
@@ -979,6 +991,22 @@ export default function App() {
             if (walDiPackQty > 1 && qty % walDiPackQty !== 0) {
               casePackViolations.push(`${line.vendorStyle || "?"} — ordered ${qty}, pack size ${walDiPackQty}`);
             }
+          } else if (isHomeHardware) {
+            const vendorStyle = String(line.vendorStyle || "").trim();
+            const m = imUpdateRaw?.items?.length ? (
+              imUpdateRaw.items.find(it => String(it["Child SKU"] || "").trim().toUpperCase() === vendorStyle.toUpperCase()) ||
+              imUpdateRaw.items.find(it => String(it["Parent SKU"] || "").trim().toUpperCase() === vendorStyle.toUpperCase())
+            ) : null;
+            if (m) {
+              nsSku = String(m["Child SKU"] || "").trim();
+              parentSku = String(m["Parent SKU"] || "").trim();
+            } else {
+              unmatched.push(vendorStyle || "");
+              nsSku = vendorStyle;
+              parentSku = "";
+            }
+            qty = Number(line.quantity) || 0;
+            rate = Number(line.unitCost) || 0;
           } else {
             if (imUpdateRaw?.items?.length) {
               const m = lookup(imUpdateRaw.items, line.upc, line.vendorItemNum);
@@ -999,7 +1027,9 @@ export default function App() {
             rowCustomerPartNum = String(line.itemNum || "");
           }
 
-          const rowMemo = isHyVee
+          const rowMemo = isHomeHardware
+            ? `Ship - HHOCEAN@HOMEHARDWARE.CA 5196644751\n*Note: Ship date is the date this P.O. should be shipped from your warehouse\nINVOICE MUST SHOW HOME'S ITEM# ${line.hhNbr || ""}`
+            : isHyVee
             ? `PODate ${po.orderDate} RequestedShipDate ${shipDate} CancelDate ${cancelDate} MustArriveBy ${mabd}`
             : isJungleJims ? jjMemo
             : isTjmCan ? tjmMemo
@@ -1016,17 +1046,17 @@ export default function App() {
             "Quantity": qty, "Item Rate": rate, "Amount": parseFloat((qty * rate).toFixed(2)),
             "Is EDI Sent": rc.isEdiSent, "PO Number": isSlt ? sltPoNumber : po.poNumber, "NS CUSTOMER": rc.nsCustomer,
             "Status": orderStatus,
-            "Ship Date": isWalmartDi ? walDiShipDate : isWalmartCan ? walCanShipDate : isPriceSmart ? psShipDate : isVerdi ? verdiShipDate : isWorldMarket ? wmShipDate : isGilt ? giltShipDate : isTjmCan ? tjmShipDate : isJungleJims ? jjShipDate : isMis ? misShipDate : isSlt ? sltShipDate : shipDate,
-            "Cancel Date": isWalmartDi ? walDiCancelDate : isWalmartCan ? walCanCancelDate : isPriceSmart ? psCancelDate : isVerdi ? verdiCancelDate : isWorldMarket ? wmCancelDate : isGilt ? giltCancelDate : isTjmCan ? tjmCancelDate : isJungleJims ? jjCancelDate : isMis ? misCancelDate : isSlt ? sltCancelDate : cancelDate,
-            "Must Arrive By Date": isWalmartDi ? "" : isWalmartCan ? walCanMabd : isPriceSmart ? psMabd : isVerdi ? verdiMabd : isWorldMarket ? wmMabd : isGilt ? giltMabd : isTjmCan ? tjmMabd : isJungleJims ? jjMabd : isMis ? misMabd : isSlt ? sltMabd : mabd,
-            "Name": (isWalmartCan || isWalmartDi) ? (po.addressee || "") : isTjmCan ? tjmChainName : shipToName,
+            "Ship Date": isHomeHardware ? hhShipDate : isWalmartDi ? walDiShipDate : isWalmartCan ? walCanShipDate : isPriceSmart ? psShipDate : isVerdi ? verdiShipDate : isWorldMarket ? wmShipDate : isGilt ? giltShipDate : isTjmCan ? tjmShipDate : isJungleJims ? jjShipDate : isMis ? misShipDate : isSlt ? sltShipDate : shipDate,
+            "Cancel Date": isHomeHardware ? hhCancelDate : isWalmartDi ? walDiCancelDate : isWalmartCan ? walCanCancelDate : isPriceSmart ? psCancelDate : isVerdi ? verdiCancelDate : isWorldMarket ? wmCancelDate : isGilt ? giltCancelDate : isTjmCan ? tjmCancelDate : isJungleJims ? jjCancelDate : isMis ? misCancelDate : isSlt ? sltCancelDate : cancelDate,
+            "Must Arrive By Date": isHomeHardware ? hhMabd : isWalmartDi ? "" : isWalmartCan ? walCanMabd : isPriceSmart ? psMabd : isVerdi ? verdiMabd : isWorldMarket ? wmMabd : isGilt ? giltMabd : isTjmCan ? tjmMabd : isJungleJims ? jjMabd : isMis ? misMabd : isSlt ? sltMabd : mabd,
+            "Name": isHomeHardware ? "HOME HARDWARE STORES LTD" : (isWalmartCan || isWalmartDi) ? (po.addressee || "") : isTjmCan ? tjmChainName : shipToName,
             "Attention": isTjmCan ? "" : (po.shipToAttention || ""),
-            "Address 1": isTjmCan ? (tjmDcAddress.address1 || "") : po.shipToAddress1,
+            "Address 1": isHomeHardware ? "34 Henry Street West" : isTjmCan ? (tjmDcAddress.address1 || "") : po.shipToAddress1,
             "Address 2": isTjmCan ? "" : (po.shipToAddress2 || ""),
-            "City": isTjmCan ? (tjmDcAddress.city || "") : po.shipToCity,
-            "State": isTjmCan ? (tjmDcAddress.state || "") : po.shipToState,
-            "Zip": isTjmCan ? (tjmDcAddress.zip || "") : po.shipToZip,
-            "Country": isWalmartDi ? "US" : isWalmartCan ? "CA" : isTjmCan ? "Canada" : po.shipToCountry,
+            "City": isHomeHardware ? "St. Jacobs" : isTjmCan ? (tjmDcAddress.city || "") : po.shipToCity,
+            "State": isHomeHardware ? "ON" : isTjmCan ? (tjmDcAddress.state || "") : po.shipToState,
+            "Zip": isHomeHardware ? "N0B2N0" : isTjmCan ? (tjmDcAddress.zip || "") : po.shipToZip,
+            "Country": isHomeHardware ? "CA" : isWalmartDi ? "US" : isWalmartCan ? "CA" : isTjmCan ? "Canada" : po.shipToCountry,
             "Location": rc.defaultLocation || "",
             "Ship Method": shipMethod, "Memo": rowMemo,
             "Customer Part Number": rowCustomerPartNum,
@@ -1072,7 +1102,8 @@ export default function App() {
   const isSamplesRetailer = retailer === "Samples";
   const isWalmartCanRetailer = retailer === "Walmart Canada";
   const isWalmartDiRetailer = retailer === "Walmart DI - US";
-  const memoIsHardcoded = !isGnbRetailer && (isJungleJimsRetailer || isTjmCanRetailer || isMisRetailer || isSltRetailer);
+  const isHomeHardwareRetailer = retailer === "Home Hardware";
+  const memoIsHardcoded = !isGnbRetailer && (isJungleJimsRetailer || isTjmCanRetailer || isMisRetailer || isSltRetailer || isHomeHardwareRetailer);
   const effectiveRows = useMemo(()=>rows.map((r, idx) => ({
     ...r,
     ...(rowOverrides[idx] || {}),
@@ -1094,7 +1125,7 @@ export default function App() {
     ...(isSamplesRetailer && samplesCancelDate ? { "Cancel Date": isoToMDY(samplesCancelDate) } : {}),
     ...(isSamplesRetailer && samplesMabd ? { "Must Arrive By Date": isoToMDY(samplesMabd) } : {}),
     // GNB and JJ memos are auto-generated per row; don't override
-    ...(!isGnbRetailer && !isJungleJimsRetailer && !isTjmCanRetailer && !isMisRetailer && !isSltRetailer && memo ? { "Memo": memo } : {}),
+    ...(!isGnbRetailer && !isJungleJimsRetailer && !isTjmCanRetailer && !isMisRetailer && !isSltRetailer && !isHomeHardwareRetailer && memo ? { "Memo": memo } : {}),
     "Item": r["Parent SKU"] ? `${r["Parent SKU"]} : ${r["NS SKU"]}` : r["NS SKU"] || "",
     "Customer": retailer === "Samples" && samplesSubcustomer ? `Samples : Samples - ${samplesSubcustomer}` : rc.nsCustomer,
     "Addressee": r["Name"] || "",
@@ -1575,7 +1606,7 @@ export default function App() {
                     <td style={{...S.td,borderBottom:i<effectiveRows.length-1?"0.5px solid var(--color-border-tertiary)":"none",position:"sticky",left:0,background:row._unmatched?"rgba(251,146,60,0.1)":"var(--color-background-primary)",zIndex:1,textAlign:"center",color:"var(--color-text-tertiary)",fontSize:11,width:40,minWidth:40}}>{i+1}</td>
                     {allCols.map(h=>(
                       <td key={h} style={{...S.td,borderBottom:i<effectiveRows.length-1?"0.5px solid var(--color-border-tertiary)":"none",padding:0,position:"relative",...(h===divider?{borderLeft:"1.5px solid var(--color-border-secondary)"}:{}),...(_warnCols.has(h)?{background:"rgba(239,68,68,0.08)"}:{})}}>
-                        <div aria-hidden="true" style={{visibility:"hidden",padding:"5px 9px",fontSize:13,fontFamily:"var(--font-sans)",whiteSpace:"nowrap",lineHeight:"normal",userSelect:"none"}}>{String(row[h]??'')||' '}</div>
+                        <div aria-hidden="true" style={{visibility:"hidden",padding:"5px 9px",fontSize:13,fontFamily:"var(--font-sans)",whiteSpace:"nowrap",lineHeight:"normal",userSelect:"none",...(h==="Memo"?{maxWidth:"230px",overflow:"hidden"}:{})}}>{String(row[h]??'')||' '}</div>
                         <input
                           value={row[h]??''}
                           onChange={e=>{const v=e.target.value;setRowOverrides(prev=>{const next=[...prev];const updated={...(next[i]||{}),[h]:v};if(h==="Quantity"||h==="Item Rate"){const qty=parseFloat(h==="Quantity"?v:row["Quantity"])||0;const rate=parseFloat(h==="Item Rate"?v:row["Item Rate"])||0;updated["Amount"]=parseFloat((qty*rate).toFixed(2));}next[i]=updated;return next;});}}
@@ -1612,7 +1643,7 @@ export default function App() {
               <div style={cardStyle}>
                 <span style={titleStyle}>Purchase Orders</span>
                 <div style={{display:"flex",gap:6}}>
-                  <button style={sageBtn} onClick={()=>dlCSV(isSamplesRetailer?buildSamplesCSV(effectiveRows):isGnbRetailer?buildGnbCSV(effectiveRows):isJungleJimsRetailer?buildJjCSV(effectiveRows):isImperialRetailer?buildImperialCSV(effectiveRows):isTjmCanRetailer?buildTjmCanCSV(effectiveRows):isWalmartCanRetailer?buildWalmartCanCSV(effectiveRows):isWalmartDiRetailer?buildWalmartDiCSV(effectiveRows):buildCSV(effectiveRows),`${retailer.replace(/[^a-zA-Z0-9\s]/g,"").replace(/\s+/g,"_")}_PO_${localISODate()}.csv`)}><i className="ti ti-download" aria-hidden="true" style={{fontSize:15}}/>Download CSV</button>
+                  <button style={sageBtn} onClick={()=>dlCSV(isSamplesRetailer?buildSamplesCSV(effectiveRows):isGnbRetailer?buildGnbCSV(effectiveRows):isJungleJimsRetailer?buildJjCSV(effectiveRows):isImperialRetailer?buildImperialCSV(effectiveRows):isTjmCanRetailer?buildTjmCanCSV(effectiveRows):isWalmartCanRetailer?buildWalmartCanCSV(effectiveRows):isWalmartDiRetailer?buildWalmartDiCSV(effectiveRows):isHomeHardwareRetailer?buildHhCSV(effectiveRows):buildCSV(effectiveRows),`${retailer.replace(/[^a-zA-Z0-9\s]/g,"").replace(/\s+/g,"_")}_PO_${localISODate()}.csv`)}><i className="ti ti-download" aria-hidden="true" style={{fontSize:15}}/>Download CSV</button>
                   <a href={import.meta.env.DEV?"https://4848284-sb1.app.netsuite.com/app/setup/assistants/nsimport/importassistant.nl?recid=210&new=T":"https://4848284.app.netsuite.com/app/setup/assistants/nsimport/importassistant.nl?recid=206&new=T"} target="_blank" rel="noreferrer" style={sageBtn}><i className="ti ti-upload" aria-hidden="true" style={{fontSize:15}}/>Import CSV</a>
                 </div>
               </div>
