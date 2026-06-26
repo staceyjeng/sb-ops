@@ -1113,7 +1113,6 @@ export default function App() {
   const memoIsHardcoded = !isGnbRetailer && (isJungleJimsRetailer || isTjmCanRetailer || isMisRetailer || isSltRetailer || isHomeHardwareRetailer);
   const effectiveRows = useMemo(()=>rows.map((r, idx) => ({
     ...r,
-    ...(rowOverrides[idx] || {}),
     // GNB rows carry per-row ship method from distro; don't override with global selector
     "Ship Method": isGnbRetailer ? (r["Ship Method"] || "") : shipMethod,
     // GNB date and account numbers come from the inputs and update live
@@ -1140,7 +1139,8 @@ export default function App() {
       const t={"Addressee":toTitleCase(r["Name"]||""),"Attention":toTitleCase(r["Attention"]||""),"Address 1":toTitleCase(r["Address 1"]||""),"Address 2":toTitleCase(r["Address 2"]||""),"City":toTitleCase(r["City"]||""),"State":(r["State"]||"").toUpperCase(),"Zip":r["Zip"]||"","Country":r["Country"]||"US"};
       if(addrBookSel!==''){const e=addressBook[parseInt(addrBookSel)];if(e)return{"Addressee":e.name||t["Addressee"],"Attention":e.attention||t["Attention"],"Address 1":e.addr1||t["Address 1"],"Address 2":e.addr2||t["Address 2"],"City":e.city||t["City"],"State":e.state||t["State"],"Zip":e.zip||t["Zip"],"Country":e.country||t["Country"]};}
       return t;
-    })():{})
+    })():{}),
+    ...(rowOverrides[idx] || {})
   })).map(r=>{if(isSamplesRetailer)return r;const curMabd=r["Must Arrive By Date"];const curCancel=r["Cancel Date"];const ctry=String(r["Country"]||"").trim().toUpperCase();const isIntl=ctry&&!["US","USA","UNITED STATES","UNITED STATES OF AMERICA","U.S.","U.S.A."].includes(ctry);if((isIntl||isWalmartDiRetailer)&&!hasVal(curMabd)&&hasVal(curCancel))return{...r,"Must Arrive By Date":curCancel};return r;}),[rows,rowOverrides,shipMethod,gnbDate,gnbUpsAccount,gnbFedexAccount,orderStatus,retailer,samplesSubcustomer,samplesShipDate,samplesCancelDate,samplesMabd,memo,addrBookSel,addressBook]);
   const total = effectiveRows.reduce((s, r) => s + Number(r["Amount"]), 0);
   const _walCanAddrKeys = new Set(["Addressee","Address 1","City","State","Zip"]);
