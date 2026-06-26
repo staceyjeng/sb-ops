@@ -2,7 +2,22 @@ import { createHmac } from 'crypto';
 import OAuth from 'oauth-1.0a';
 
 export default async (request, context) => {
-  if (!context.clientContext?.user) {
+  // context.clientContext is v1-only; manually verify the Bearer JWT for v2
+  const authHeader = request.headers.get('Authorization') || '';
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (bearerToken) {
+    try {
+      const parts = bearerToken.split('.');
+      if (parts.length !== 3) throw new Error('malformed');
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (payload.exp && Date.now() / 1000 > payload.exp) throw new Error('expired');
+    } catch {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  } else {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
