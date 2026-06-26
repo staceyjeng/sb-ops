@@ -1125,6 +1125,7 @@ export default function App() {
     ...(isSamplesRetailer && samplesShipDate ? { "Ship Date": isoToMDY(samplesShipDate) } : {}),
     ...(isSamplesRetailer && samplesCancelDate ? { "Cancel Date": isoToMDY(samplesCancelDate) } : {}),
     ...(isSamplesRetailer && samplesMabd ? { "Must Arrive By Date": isoToMDY(samplesMabd) } : {}),
+    ...(!isSamplesRetailer?(()=>{const curMabd=rowOverrides[idx]?.["Must Arrive By Date"]??r["Must Arrive By Date"];const curCancel=rowOverrides[idx]?.["Cancel Date"]??r["Cancel Date"];const ctry=String(rowOverrides[idx]?.["Country"]??r["Country"]??"").trim().toUpperCase();const isIntl=ctry&&!["US","USA","UNITED STATES","UNITED STATES OF AMERICA","U.S.","U.S.A."].includes(ctry);return (isIntl||isWalmartDiRetailer)&&!hasVal(curMabd)&&hasVal(curCancel)?{"Must Arrive By Date":curCancel}:{};})()):{}),
     // GNB and JJ memos are auto-generated per row; don't override
     ...(!isGnbRetailer && !isJungleJimsRetailer && !isTjmCanRetailer && !isMisRetailer && !isSltRetailer && !isHomeHardwareRetailer && memo ? { "Memo": memo } : {}),
     "Item": r["Parent SKU"] ? `${r["Parent SKU"]} : ${r["NS SKU"]}` : r["NS SKU"] || "",
@@ -1139,7 +1140,7 @@ export default function App() {
   const total = effectiveRows.reduce((s, r) => s + Number(r["Amount"]), 0);
   const _walCanAddrKeys = new Set(["Addressee","Address 1","City","State","Zip"]);
   const isWalmartCanRtfMode = isWalmartCanRetailer && pdfs.some(p => p.rtfText);
-  const _requiredFields = (rc.defaultLocation ? [...REQUIRED_FIELDS, {label:"Location",key:"Location"}] : REQUIRED_FIELDS).filter(f => isSamplesRetailer ? f.key !== "Addressee" : true).filter(f => (isWalmartCanRetailer || isWalmartDiRetailer) ? !_walCanAddrKeys.has(f.key) : true).filter(f => (isWalmartDiRetailer || isWalmartCanRtfMode) ? f.key !== "Must Arrive By Date" : true);
+  const _requiredFields = (rc.defaultLocation ? [...REQUIRED_FIELDS, {label:"Location",key:"Location"}] : REQUIRED_FIELDS).filter(f => isSamplesRetailer ? f.key !== "Addressee" : true).filter(f => (isWalmartCanRetailer || isWalmartDiRetailer) ? !_walCanAddrKeys.has(f.key) : true);
   const missingFields = (result && effectiveRows.length > 0) ? _requiredFields.filter(f => effectiveRows.some(r => !hasVal(r[f.key]))) : [];
   const _groundWarning = (() => {
     if (!result || !isSamplesRetailer || !rows.length) return {active:false,key:''};
