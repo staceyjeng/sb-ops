@@ -804,6 +804,12 @@ export default function App() {
               }
               qty = (Number(line.numberOfCases) || 0) * sizeMfrNo;
               rate = sizeMfrNo > 0 ? parseFloat((costOfDisplay / sizeMfrNo).toFixed(4)) : 0;
+              const millisPdfAmt = parseFloat((costOfDisplay * (Number(line.numberOfCases) || 0)).toFixed(2));
+              const millisOurAmt = parseFloat((qty * rate).toFixed(2));
+              if (millisPdfAmt > 0 && Math.abs(millisOurAmt - millisPdfAmt) > 0.01) {
+                rowCaseMismatch = true;
+                caseMismatches.push(`PO ${po.poNumber} - ${parentSku || rawCaseUpc}: amount mismatch — computed $${millisOurAmt}, PDF extended cost $${millisPdfAmt}`);
+              }
               rowCustomerPartNum = String(line.itemNum || "");
             } else {
               const upc12 = String(line.gtin || "").replace(/\D/g, "").slice(-12);
