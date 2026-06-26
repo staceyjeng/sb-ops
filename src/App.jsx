@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useCallback, useEffect, useMemo, Fragment } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo, Fragment } from "react";
 import JSZip from "jszip";
 import netlifyIdentity from 'netlify-identity-widget';
 
@@ -244,7 +244,8 @@ export default function App() {
     if(import.meta.env.DEV) return;
     netlifyIdentity.on('login', u=>{setAuthUser(u); netlifyIdentity.close();});
     netlifyIdentity.on('logout', ()=>setAuthUser(null));
-    return()=>{netlifyIdentity.off('login');netlifyIdentity.off('logout');};
+    netlifyIdentity.on('init', u=>setAuthUser(u||null));
+    return()=>{netlifyIdentity.off('login');netlifyIdentity.off('logout');netlifyIdentity.off('init');};
   },[]);
 
   const fetchImUpdate = useCallback(async()=>{
@@ -252,7 +253,7 @@ export default function App() {
     setImUpdateMsg('');
     try{
       const headers={};
-      if(!import.meta.env.DEV){const token=netlifyIdentity.currentUser()?.token?.access_token;if(token)headers['Authorization']=`Bearer ${token}`;}
+      if(!import.meta.env.DEV){const user=netlifyIdentity.currentUser();if(user){const token=await user.jwt();if(token)headers['Authorization']=`Bearer ${token}`;}}
       const res=await fetch('/api/netsuite/itemmaster-restlet?searchId=customsearchitem_master',{headers});
       const data=await res.json();
       if(data.error){setImUpdateStatus('error');setImUpdateMsg(data.error);}
@@ -260,7 +261,7 @@ export default function App() {
     }catch(e){setImUpdateStatus('error');setImUpdateMsg(e.message||'Network error');}
   },[]);
 
-  useEffect(()=>{fetchImUpdate();},[]);
+  useEffect(()=>{if(authUser) fetchImUpdate();},[authUser]);
 
   useEffect(()=>{const t=setTimeout(()=>setImUpdateSearchQ(imUpdateSearch.trim()),200);return()=>clearTimeout(t);},[imUpdateSearch]);
   useEffect(()=>{const h=e=>{if(addrBookRef.current&&!addrBookRef.current.contains(e.target))setAddrBookOpen(false);};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);},[]);
@@ -1373,9 +1374,18 @@ export default function App() {
               </div>
             );
           })():imUpdateStatus==='error'?(
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:13,color:"var(--color-text-danger)",fontWeight:500}}>{imUpdateMsg}</span>
-              <button style={S.btnReplace} onClick={fetchImUpdate}>Try again</button>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:6}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:13,color:"var(--color-text-danger)",fontWeight:500}}>{imUpdateMsg}</span>
+                <button style={S.btnReplace} onClick={fetchImUpdate}>Try again</button>
+              </div>
+              <span style={{fontSize:12,color:"var(--color-text-tertiary)"}}>
+                Only{" "}
+                <a href="https://4848284.app.netsuite.com/app/common/search/searchresults.nl?searchid=75078&whence=" target="_blank" rel="noreferrer" style={{color:"var(--color-text-secondary)",fontWeight:500}}>download</a>
+                {" "}the saved search as a CSV and{" "}
+                <span style={{cursor:"pointer",color:"var(--color-text-secondary)",fontWeight:500,textDecoration:"underline"}} onClick={()=>imUpdateRef.current?.click()}>upload here</span>
+                {" "}as a failsafe if the API is unavailable
+              </span>
             </div>
           ):(
             <button
